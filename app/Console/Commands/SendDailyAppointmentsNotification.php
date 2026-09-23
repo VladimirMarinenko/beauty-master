@@ -39,9 +39,9 @@ class SendDailyAppointmentsNotification extends Command
 
         $webPush = new WebPush([
             'VAPID' => [
-                'subject' => env('APP_URL', 'http://127.0.0.1:8000'),
-                'publicKey' => env('VAPID_PUBLIC_KEY'),
-                'privateKey' => env('VAPID_PRIVATE_KEY'),
+                'subject' => config('webpush.vapid.subject'),
+                'publicKey' => config('webpush.vapid.public_key'),
+                'privateKey' => config('webpush.vapid.private_key'),
             ],
         ]);
 
