@@ -37,13 +37,19 @@ class SendDailyAppointmentsNotification extends Command
             return 0;
         }
 
-        $webPush = new WebPush([
-            'VAPID' => [
-                'subject' => config('webpush.vapid.subject'),
-                'publicKey' => config('webpush.vapid.public_key'),
-                'privateKey' => config('webpush.vapid.private_key'),
+        $webPush = new WebPush(
+            [
+                'VAPID' => [
+                    'subject' => config('webpush.vapid.subject'),
+                    'publicKey' => config('webpush.vapid.public_key'),
+                    'privateKey' => config('webpush.vapid.private_key'),
+                ],
             ],
-        ]);
+            [
+                'timeout' => 10,
+                'TTL' => 3600,
+            ]
+        );
 
         foreach ($users as $user) {
             if ($user->pushSubscriptions->isEmpty()) continue;
