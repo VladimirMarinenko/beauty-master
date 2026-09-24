@@ -10,6 +10,23 @@
         </div>
     </x-slot>
 
+    <style>
+        /* Растягиваем кликабельную зону пикера времени на всё поле */
+        input[type="time"] {
+            position: relative;
+        }
+        input[type="time"]::-webkit-calendar-picker-indicator {
+            position: absolute;
+            right: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            cursor: pointer;
+            opacity: 0;
+            background: transparent;
+        }
+    </style>
+
     <div class="app-container">
         <div class="card p-5">
             <form action="{{ route('appointments.store') }}" method="POST" id="appointment-form">
@@ -74,11 +91,16 @@
 
                 <!-- Начало -->
                 <div class="mb-5">
-                    <label for="start_time" class="block text-sm font-semibold text-gray-700 mb-2">Начало</label>
-                    <input type="text" name="start_time" id="start_time"
-                           value="{{ old('start_time', $start ?? '') }}" required readonly
-                           class="input-field datepicker-datetime cursor-pointer"
-                           placeholder="Выберите дату и время">
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">Начало</label>
+                    <div class="grid grid-cols-2 gap-3">
+                        <input type="text" id="start_date" readonly
+                               class="input-field cursor-pointer"
+                               placeholder="Дата">
+                        <input type="time" id="start_time_input" step="900"
+                               class="input-field"
+                               placeholder="HH:MM">
+                    </div>
+                    <input type="hidden" name="start_time" id="start_time" value="{{ old('start_time', $start ?? '') }}">
                     <p id="overlap-message" class="text-red-500 text-sm mt-2 hidden font-medium">Это время занято. Выберите другое.</p>
                 </div>
 
@@ -160,61 +182,11 @@
                     today: 'Сегодня',
                     clear: 'Очистить',
                     dateFormat: 'dd.MM.yyyy',
-                    timeFormat: 'HH:mm',
                     firstDay: 1
                 };
 
-                new AirDatepicker(document.getElementById('start_time'), {
-                    locale: ruLocale,
-                    timepicker: true,
-                    dateFormat: 'yyyy-MM-dd',
-                    timeFormat: 'HH:mm',
-                    minutesStep: 15,
-                    minHours: 6,
-                    maxHours: 22,
-                    buttons: ['today', 'clear'],
-                    onSelect: function({ date }) {
-                        if (!date) {
-                            document.getElementById('start_time').value = '';
-                            recalculateEndTime();
-                            checkOverlap();
-                            loadAvailableSlots();
-                            return;
-                        }
-                        const d = date;
-                        const year = d.getFullYear();
-                        const month = String(d.getMonth() + 1).padStart(2, '0');
-                        const day = String(d.getDate()).padStart(2, '0');
-                        const hours = String(d.getHours()).padStart(2, '0');
-                        const minutes = String(d.getMinutes()).padStart(2, '0');
-                        document.getElementById('start_time').value = `${year}-${month}-${day} ${hours}:${minutes}`;
-                        recalculateEndTime();
-                        checkOverlap();
-                        loadAvailableSlots();
-                    }
-                });
-
-                // Dropdown для услуг
-                const dropdownBtn = document.getElementById('services-dropdown-btn');
-                const dropdown = document.getElementById('services-dropdown');
-                const serviceCheckboxes = document.querySelectorAll('.service-checkbox');
-                const totalPriceInput = document.getElementById('total_price');
-                const totalDurationInput = document.getElementById('total_duration');
-                const serviceIdsInput = document.getElementById('service_ids');
-                const totalSummary = document.getElementById('total-summary');
-                const placeholder = document.getElementById('services-placeholder');
-
-                dropdownBtn.addEventListener('click', function(e) {
-                    e.stopPropagation();
-                    dropdown.classList.toggle('hidden');
-                });
-
-                document.addEventListener('click', function(e) {
-                    if (!dropdown.contains(e.target) && e.target !== dropdownBtn) {
-                        dropdown.classList.add('hidden');
-                    }
-                });
-
+                const startDateInput = document.getElementById('start_date');
+                const startTimeInput = document.getElementById('start_time_input');
                 const startInput = document.getElementById('start_time');
                 const endInput = document.getElementById('end_time');
                 const overlapMessage = document.getElementById('overlap-message');
@@ -225,6 +197,108 @@
                 const customDurationInput = document.getElementById('custom_duration');
                 const slotsContainer = document.getElementById('available-slots-container');
                 const slotsDiv = document.getElementById('available-slots');
+                const serviceCheckboxes = document.querySelectorAll('.service-checkbox');
+                const totalPriceInput = document.getElementById('total_price');
+                const totalDurationInput = document.getElementById('total_duration');
+                const serviceIdsInput = document.getElementById('service_ids');
+                const totalSummary = document.getElementById('total-summary');
+                const placeholder = document.getElementById('services-placeholder');
+                const dropdownBtn = document.getElementById('services-dropdown-btn');
+                const dropdown = document.getElementById('services-dropdown');
+
+                // Клик в любом месте поля времени открывает нативный пикер (кроссбраузерно)
+                startTimeInput.addEventListener('click', function () {
+                    if (typeof this.showPicker === 'function') {
+                        try {
+                            this.showPicker();
+                        } catch (err) {
+                            // Пикер уже открыт или браузер не разрешил — игнорируем
+                        }
+                    }
+                });
+
+                // Календарь — только дата, неделя с понедельника
+                new AirDatepicker(startDateInput, {
+                    locale: ruLocale,
+                    dateFormat: 'yyyy-MM-dd',
+                    firstDay: 1,
+                    buttons: ['today', 'clear'],
+                    onSelect: function ({ date, formattedDate }) {
+                        if (!date) {
+                            startDateInput.value = '';
+                        } else {
+                            startDateInput.value = formattedDate;
+                        }
+                        combineDateTime();
+                        recalculateEndTime();
+                        checkOverlap();
+                        loadAvailableSlots();
+                    }
+                });
+
+                // Восстанавливаем значения при загрузке (old() или $start)
+                (function initFromValue() {
+                    const initial = startInput.value;
+                    if (!initial || !initial.includes(' ')) return;
+                    const [datePart, timePart] = initial.split(' ');
+                    startDateInput.value = datePart;
+                    startTimeInput.value = timePart.slice(0, 5);
+                    recalculateEndTime();
+                })();
+
+                function combineDateTime() {
+                    const date = startDateInput.value;
+                    const time = startTimeInput.value;
+                    if (date && time) {
+                        startInput.value = `${date} ${time}`;
+                    } else {
+                        startInput.value = '';
+                    }
+                }
+
+                // Автоформат при вводе: 930 → 09:30, 9 → 09
+                startTimeInput.addEventListener('input', function () {
+                    let v = this.value.replace(/[^\d:]/g, '');
+                    if (v.length === 3 && !v.includes(':')) {
+                        v = '0' + v[0] + ':' + v.slice(1);
+                    } else if (v.length === 4 && !v.includes(':')) {
+                        v = v.slice(0, 2) + ':' + v.slice(2);
+                    }
+                    this.value = v;
+                });
+
+                startTimeInput.addEventListener('change', function () {
+                    const v = this.value.trim();
+                    if (!v) {
+                        combineDateTime();
+                        recalculateEndTime();
+                        checkOverlap();
+                        loadAvailableSlots();
+                        return;
+                    }
+                    const m = v.match(/^(\d{1,2}):?(\d{1,2})?$/);
+                    if (m) {
+                        const hh = String(Math.min(23, parseInt(m[1] || '0', 10))).padStart(2, '0');
+                        const mm = String(Math.min(59, parseInt(m[2] || '0', 10))).padStart(2, '0');
+                        this.value = `${hh}:${mm}`;
+                    }
+                    combineDateTime();
+                    recalculateEndTime();
+                    checkOverlap();
+                    loadAvailableSlots();
+                });
+
+                // Dropdown для услуг
+                dropdownBtn.addEventListener('click', function (e) {
+                    e.stopPropagation();
+                    dropdown.classList.toggle('hidden');
+                });
+
+                document.addEventListener('click', function (e) {
+                    if (!dropdown.contains(e.target) && e.target !== dropdownBtn) {
+                        dropdown.classList.add('hidden');
+                    }
+                });
 
                 function parseDateTime(str) {
                     if (!str || !str.includes(' ')) return null;
@@ -330,7 +404,6 @@
                             submitButton.disabled = false;
                         } else {
                             overlapMessage.classList.remove('hidden');
-                            startInput.classList.add('border-red-500');
                             submitButton.disabled = true;
                         }
                     } catch (error) {
@@ -352,7 +425,7 @@
                     const firstChecked = Array.from(serviceCheckboxes).find(cb => cb.checked);
                     if (!firstChecked) return;
                     const serviceId = firstChecked.value;
-                    const dateValue = startInput.value?.split(' ')[0];
+                    const dateValue = startDateInput.value;
                     if (!serviceId || !dateValue) return;
                     let url = `{{ route('appointments.available-slots') }}?service_id=${serviceId}&date=${dateValue}`;
                     const duration = getEffectiveDuration();
@@ -374,7 +447,7 @@
                                 btn.textContent = slot.start.slice(11, 16);
                                 btn.dataset.start = slot.start;
                                 btn.dataset.end = slot.end;
-                                btn.addEventListener('click', function() {
+                                btn.addEventListener('click', function () {
                                     if (activeSlotButton) {
                                         activeSlotButton.classList.remove('bg-indigo-600', 'text-white', 'border-indigo-600');
                                         activeSlotButton.classList.add('bg-gray-100', 'text-gray-800');
@@ -382,7 +455,11 @@
                                     btn.classList.remove('bg-gray-100', 'text-gray-800');
                                     btn.classList.add('bg-indigo-600', 'text-white', 'border-indigo-600');
                                     activeSlotButton = btn;
-                                    startInput.value = slot.start;
+
+                                    const [datePart, timePart] = slot.start.split(' ');
+                                    startDateInput.value = datePart;
+                                    startTimeInput.value = timePart.slice(0, 5);
+                                    combineDateTime();
                                     endInput.value = slot.end;
                                     recalculateEndTime();
                                     checkOverlap();
@@ -418,18 +495,17 @@
                     loadAvailableSlots();
                 });
 
-                startInput.addEventListener('change', () => {
-                    recalculateEndTime();
-                    checkOverlap();
-                    loadAvailableSlots();
-                });
-
                 // Отправка формы
-                document.getElementById('appointment-form').addEventListener('submit', async function(e) {
+                document.getElementById('appointment-form').addEventListener('submit', async function (e) {
                     e.preventDefault();
+                    combineDateTime();
                     const selectedIds = Array.from(serviceCheckboxes).filter(cb => cb.checked).map(cb => cb.value);
                     if (selectedIds.length === 0) {
                         alert('Выберите хотя бы одну услугу');
+                        return;
+                    }
+                    if (!startInput.value) {
+                        alert('Укажите дату и время начала');
                         return;
                     }
 
@@ -500,14 +576,14 @@
                 function openDatabase() {
                     return new Promise((resolve, reject) => {
                         const request = indexedDB.open('BeautyManagerDB', 1);
-                        request.onupgradeneeded = function(event) {
+                        request.onupgradeneeded = function (event) {
                             const db = event.target.result;
                             if (!db.objectStoreNames.contains('pendingAppointments')) {
                                 db.createObjectStore('pendingAppointments', { keyPath: 'id', autoIncrement: true });
                             }
                         };
-                        request.onsuccess = function(event) { resolve(event.target.result); };
-                        request.onerror = function(event) { reject(event.target.error); };
+                        request.onsuccess = function (event) { resolve(event.target.result); };
+                        request.onerror = function (event) { reject(event.target.error); };
                     });
                 }
 
