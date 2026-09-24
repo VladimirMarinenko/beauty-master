@@ -93,12 +93,18 @@
                 <div class="mb-5">
                     <label class="block text-sm font-semibold text-gray-700 mb-2">Начало</label>
                     <div class="grid grid-cols-2 gap-3">
-                        <input type="text" id="start_date" readonly
-                               class="input-field cursor-pointer"
-                               placeholder="Дата">
-                        <input type="time" id="start_time_input" step="900"
-                               class="input-field"
-                               placeholder="HH:MM">
+                        <div>
+                            <span class="block text-xs font-medium text-gray-500 mb-1">Дата</span>
+                            <input type="text" id="start_date" readonly
+                                   class="input-field cursor-pointer"
+                                   placeholder="дд.мм.гггг">
+                        </div>
+                        <div>
+                            <span class="block text-xs font-medium text-gray-500 mb-1">Время</span>
+                            <input type="time" id="start_time_input" step="900"
+                                   class="input-field"
+                                   placeholder="чч:мм">
+                        </div>
                     </div>
                     <input type="hidden" name="start_time" id="start_time" value="{{ old('start_time', $start ?? '') }}">
                     <p id="overlap-message" class="text-red-500 text-sm mt-2 hidden font-medium">Это время занято. Выберите другое.</p>
