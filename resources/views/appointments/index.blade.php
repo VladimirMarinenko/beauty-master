@@ -82,7 +82,7 @@
                 headerToolbar: {
                     left: 'prev,next today',
                     center: 'title',
-                    right: 'dayGridMonth,timeGridWeek,timeGridDay,listWeek'
+                    right: 'dayGridMonth,listWeek'
                 },
                 buttonText: {
                     today: 'Сегодня',
@@ -95,18 +95,6 @@
                     listWeek: {
                         listDayFormat: { weekday: 'long', day: 'numeric', month: 'numeric' },
                         listDaySideFormat: { hour: '2-digit', minute: '2-digit' }
-                    },
-                    timeGridWeek: {
-                        slotMinTime: '06:00:00',
-                        slotMaxTime: '22:00:00',
-                        slotDuration: '00:05:00',
-                        snapDuration: '00:05:00'
-                    },
-                    timeGridDay: {
-                        slotMinTime: '06:00:00',
-                        slotMaxTime: '22:00:00',
-                        slotDuration: '00:05:00',
-                        snapDuration: '00:05:00'
                     }
                 },
 

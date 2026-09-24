@@ -308,7 +308,6 @@
 
 
 
-
         <!DOCTYPE html>
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
 <head>
@@ -367,6 +366,7 @@
             max-width: 520px;
             margin: 0 auto;
             padding: 16px;
+            padding-top: max(30px, env(safe-area-inset-top));
         }
 
         .card {
@@ -599,17 +599,116 @@
 </div>
 
 <script>
+    // === Регистрация Service Worker ===
     if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
             navigator.serviceWorker.register('/sw.js')
                 .then((registration) => {
                     console.log('SW зарегистрирован:', registration.scope);
+                    registration.update();
                 })
                 .catch((error) => {
                     console.log('Ошибка регистрации SW:', error);
                 });
         });
     }
+
+    // === Прямая синхронизация IndexedDB → сервер ===
+    // Работает без Service Worker. Не зависит от версии SW.
+    async function directSync() {
+        if (!navigator.onLine) return;
+
+        const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
+
+        try {
+            const db = await openDb();
+            const pending = await getAllPending(db);
+            if (!pending.length) {
+                console.log('[Sync] Очередь пуста');
+                return;
+            }
+
+            console.log('[Sync] Найдено записей в очереди:', pending.length);
+
+            for (const item of pending) {
+                const payload = { ...item };
+                delete payload.id;
+
+                const token = payload._token || csrf;
+
+                try {
+                    const response = await fetch('/appointments/sync', {
+                        method: 'POST',
+                        credentials: 'same-origin',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': token,
+                            'X-Requested-With': 'XMLHttpRequest'
+                        },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (response.ok) {
+                        await deletePending(db, item.id);
+                        console.log('[Sync] Отправлено:', item.id);
+                    } else if ([403, 404, 422].includes(response.status)) {
+                        await deletePending(db, item.id);
+                        console.warn('[Sync] Ошибка', response.status, '— удаляем из очереди', item.id);
+                    } else {
+                        console.warn('[Sync] Сервер вернул', response.status, '— оставляем в очереди', item.id);
+                    }
+                } catch (err) {
+                    console.error('[Sync] Сетевая ошибка:', err);
+                    break; // сеть упала — не пытаемся остальные
+                }
+            }
+        } catch (err) {
+            console.error('[Sync] Ошибка IndexedDB:', err);
+        }
+    }
+
+    function openDb() {
+        return new Promise((resolve, reject) => {
+            const req = indexedDB.open('BeautyManagerDB', 1);
+            req.onupgradeneeded = (e) => {
+                const db = e.target.result;
+                if (!db.objectStoreNames.contains('pendingAppointments')) {
+                    db.createObjectStore('pendingAppointments', { keyPath: 'id', autoIncrement: true });
+                }
+            };
+            req.onsuccess = (e) => resolve(e.target.result);
+            req.onerror = (e) => reject(e.target.error);
+        });
+    }
+
+    function getAllPending(db) {
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction('pendingAppointments', 'readonly');
+            const req = tx.objectStore('pendingAppointments').getAll();
+            req.onsuccess = () => resolve(req.result || []);
+            req.onerror = () => reject(req.error);
+        });
+    }
+
+    function deletePending(db, id) {
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction('pendingAppointments', 'readwrite');
+            tx.objectStore('pendingAppointments').delete(id);
+            tx.oncomplete = () => resolve();
+            tx.onerror = () => reject(tx.error);
+        });
+    }
+
+    // Синхронизация при загрузке страницы
+    window.addEventListener('load', function () {
+        if (navigator.onLine) directSync();
+    });
+
+    // И при восстановлении связи
+    window.addEventListener('online', function () {
+        console.log('[Sync] Связь восстановлена, запускаем синхронизацию...');
+        directSync();
+    });
 </script>
 
 @include('push.subscribe')

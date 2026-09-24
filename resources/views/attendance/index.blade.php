@@ -29,10 +29,15 @@
                     Нет, не все
                 </a>
             @else
-                <form method="POST" action="{{ route('attendance.process') }}">
+                <form method="POST" action="{{ route('attendance.process') }}" id="attendance-form">
                     @csrf
                     <input type="hidden" name="action" value="individual">
                     <input type="hidden" name="appointment_ids" value="{{ $appointments->pluck('id')->implode(',') }}">
+
+                    <p class="text-sm mb-3" style="color: var(--muted);">
+                        По умолчанию отмечено «Пришёл». Отметьте тех, кто <b>не пришёл</b>.
+                    </p>
+
                     <div class="space-y-3 mb-5">
                         @foreach($appointments as $appointment)
                             <div class="bg-gray-50 rounded-xl p-4">
@@ -43,11 +48,18 @@
                                 </p>
                                 <div class="mt-3 flex gap-4">
                                     <label class="inline-flex items-center cursor-pointer">
-                                        <input type="radio" name="statuses[{{ $appointment->id }}]" value="arrived" class="mr-2 h-4 w-4 text-green-600">
+                                        <input type="radio"
+                                               name="statuses[{{ $appointment->id }}]"
+                                               value="arrived"
+                                               class="mr-2 h-4 w-4 text-green-600"
+                                               checked>
                                         <span class="text-sm font-medium" style="color: var(--text);">Пришёл</span>
                                     </label>
                                     <label class="inline-flex items-center cursor-pointer">
-                                        <input type="radio" name="statuses[{{ $appointment->id }}]" value="no_show" class="mr-2 h-4 w-4 text-red-600">
+                                        <input type="radio"
+                                               name="statuses[{{ $appointment->id }}]"
+                                               value="no_show"
+                                               class="mr-2 h-4 w-4 text-red-600">
                                         <span class="text-sm font-medium" style="color: var(--text);">Не пришёл</span>
                                     </label>
                                 </div>

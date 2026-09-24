@@ -1,18 +1,15 @@
-const CACHE_NAME = 'beauty-manager-v2';
+const CACHE_NAME = 'beauty-manager-v4';
 const DB_NAME = 'BeautyManagerDB';
 const DB_VERSION = 1;
 
-// Статические ресурсы для обязательного кэширования
 const PRECACHE_URLS = [
     '/',
     '/appointments',
-    '/appointments/create',
     '/manifest.json',
     '/icons/icon-192.png',
     '/icons/icon-512.png'
 ];
 
-// Внешние ресурсы (CDN)
 const EXTERNAL_URLS = [
     'https://cdn.jsdelivr.net/npm/air-datepicker@3.5.3/air-datepicker.css',
     'https://cdn.jsdelivr.net/npm/air-datepicker@3.5.3/air-datepicker.js',
@@ -20,150 +17,122 @@ const EXTERNAL_URLS = [
     'https://fonts.bunny.net/css?family=figtree:400,500,600&display=swap'
 ];
 
+// Текущий CSRF-токен (приходит через postMessage)
+let currentCsrfToken = null;
+
 // ============================================
-// Установка Service Worker
+// Установка
 // ============================================
 self.addEventListener('install', (event) => {
     event.waitUntil(
-        caches.open(CACHE_NAME)
-            .then((cache) => {
-                console.log('Кэширование статических и внешних ресурсов');
-                return Promise.all([
-                    cache.addAll(PRECACHE_URLS),
-                    ...EXTERNAL_URLS.map(url => cache.add(url).catch(err => {
-                        console.warn('Не удалось закэшировать внешний ресурс:', url, err);
-                    }))
-                ]);
-            })
-            .then(() => self.skipWaiting())
+        caches.open(CACHE_NAME).then((cache) => {
+            // addAll падает при ошибке одного URL — оборачиваем каждый по отдельности
+            return Promise.all([
+                ...PRECACHE_URLS.map(url => cache.add(url).catch(err => {
+                    console.warn('Precache skip:', url, err);
+                })),
+                ...EXTERNAL_URLS.map(url => cache.add(url).catch(err => {
+                    console.warn('External skip:', url, err);
+                }))
+            ]);
+        }).then(() => self.skipWaiting())
     );
 });
 
 // ============================================
-// Активация Service Worker
+// Активация
 // ============================================
 self.addEventListener('activate', (event) => {
     event.waitUntil(
-        caches.keys().then((cacheNames) => {
-            return Promise.all(
-                cacheNames.map((cacheName) => {
-                    if (cacheName !== CACHE_NAME) {
-                        return caches.delete(cacheName);
-                    }
-                })
-            );
-        }).then(() => self.clients.claim())
+        caches.keys().then((names) =>
+            Promise.all(
+                names.map((name) => name !== CACHE_NAME ? caches.delete(name) : null)
+            )
+        ).then(() => self.clients.claim())
     );
 });
 
 // ============================================
-// Перехват запросов
+// Fetch
 // ============================================
 self.addEventListener('fetch', (event) => {
     const { request } = event;
 
-    // Для POST-запросов просто пробуем выполнить, но не кэшируем
     if (request.method !== 'GET') {
-        event.respondWith(
-            fetch(request).catch(() => new Response(null, { status: 503 }))
-        );
+        event.respondWith(fetch(request).catch(() => new Response(null, { status: 503 })));
         return;
     }
 
     const url = new URL(request.url);
 
-    // Не кэшируем API-запросы (события, проверки, доступные слоты)
+    // API-запросы не кэшируем
     if (url.pathname.startsWith('/appointments/events') ||
         url.pathname.startsWith('/appointments/check-overlap') ||
-        url.pathname.startsWith('/appointments/available-slots')) {
-        event.respondWith(
-            fetch(request).catch(() => new Response(null, { status: 503 }))
-        );
+        url.pathname.startsWith('/appointments/available-slots') ||
+        url.pathname.startsWith('/push-')) {
+        event.respondWith(fetch(request).catch(() => new Response(null, { status: 503 })));
         return;
     }
 
-    // Для навигационных запросов (страницы)
     if (request.mode === 'navigate') {
         event.respondWith(
-            fetch(request)
-                .then((response) => {
-                    if (response.ok) {
-                        const clone = response.clone();
-                        caches.open(CACHE_NAME).then((cache) => {
-                            cache.put(request, clone);
-                        });
-                    }
-                    return response;
-                })
-                .catch(() => {
-                    return caches.match(request).then((cached) => {
-                        return cached || caches.match('/appointments');
-                    });
-                })
+            fetch(request).then((response) => {
+                if (response.ok) {
+                    const clone = response.clone();
+                    caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+                }
+                return response;
+            }).catch(() =>
+                caches.match(request).then((cached) => cached || caches.match('/appointments'))
+            )
         );
         return;
     }
 
-    // Для остальных GET-запросов (кэш -> сеть)
     event.respondWith(
-        caches.match(request)
-            .then((cached) => {
-                if (cached) return cached;
-
-                return fetch(request)
-                    .then((response) => {
-                        if (response.status === 200) {
-                            const clone = response.clone();
-                            caches.open(CACHE_NAME).then((cache) => {
-                                cache.put(request, clone);
-                            });
-                        }
-                        return response;
-                    })
-                    .catch(() => {
-                        // Если ресурс не загрузился (например, шрифты), возвращаем пустой ответ
-                        return new Response('', { status: 200, headers: { 'Content-Type': 'text/css' } });
-                    });
-            })
+        caches.match(request).then((cached) => {
+            if (cached) return cached;
+            return fetch(request).then((response) => {
+                if (response.status === 200) {
+                    const clone = response.clone();
+                    caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+                }
+                return response;
+            }).catch(() => new Response('', {
+                status: 200,
+                headers: { 'Content-Type': 'text/css' }
+            }));
+        })
     );
 });
 
 // ============================================
-// Push-уведомления
+// Push
 // ============================================
 self.addEventListener('push', function(event) {
     let data = { title: 'Beauty Manager', body: 'Новые уведомления', icon: '/icons/icon-192.png' };
-
     if (event.data) {
-        try {
-            data = event.data.json();
-        } catch (e) {
-            data = { title: 'Beauty Manager', body: event.data.text() };
-        }
+        try { data = event.data.json(); }
+        catch (e) { data = { title: 'Beauty Manager', body: event.data.text() }; }
     }
-
-    const options = {
-        body: data.body,
-        icon: data.icon || '/icons/icon-192.png',
-        badge: '/icons/icon-192.png',
-        vibrate: [100, 50, 100],
-        data: { url: data.url || '/appointments' }
-    };
-
     event.waitUntil(
-        self.registration.showNotification(data.title, options)
+        self.registration.showNotification(data.title, {
+            body: data.body,
+            icon: data.icon || '/icons/icon-192.png',
+            badge: '/icons/icon-192.png',
+            vibrate: [100, 50, 100],
+            data: { url: data.url || '/appointments' }
+        })
     );
 });
 
 self.addEventListener('notificationclick', function(event) {
     event.notification.close();
-    event.waitUntil(
-        clients.openWindow(event.notification.data.url || '/appointments')
-    );
+    event.waitUntil(clients.openWindow(event.notification.data.url || '/appointments'));
 });
 
 // ============================================
-// Background Sync
+// Background Sync + message от страницы
 // ============================================
 self.addEventListener('sync', function(event) {
     if (event.tag === 'sync-appointments') {
@@ -171,24 +140,65 @@ self.addEventListener('sync', function(event) {
     }
 });
 
+self.addEventListener('message', function(event) {
+    if (!event.data) return;
+
+    // Обновляем CSRF-токен, если пришёл
+    if (event.data.csrf) {
+        currentCsrfToken = event.data.csrf;
+    }
+
+    if (event.data.action === 'sync-now') {
+        event.waitUntil(syncAppointments());
+    }
+});
+
+// ============================================
+// Синхронизация
+// ============================================
 async function syncAppointments() {
     const db = await openDatabase();
     const pending = await getPendingAppointments(db);
+
+    if (!pending.length) return;
+
+    console.log('Sync: найдено записей в очереди:', pending.length);
+
     for (const appointment of pending) {
+        const payload = { ...appointment };
+        delete payload.id;   // id из IndexedDB не нужен серверу
+
+        const csrf = currentCsrfToken || payload._token || '';
+        delete payload._token;   // убираем из body, отдадим в заголовке
+
         try {
             const response = await fetch('/appointments/sync', {
                 method: 'POST',
+                credentials: 'same-origin',
                 headers: {
                     'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': appointment._token || '',
+                    'X-CSRF-TOKEN': csrf,
+                    'X-Requested-With': 'XMLHttpRequest'
                 },
-                body: JSON.stringify(appointment)
+                body: JSON.stringify(payload)
             });
+
             if (response.ok) {
                 await deletePendingAppointment(db, appointment.id);
+                console.log('Sync: отправлено', appointment.id);
+            } else if (response.status === 419) {
+                console.warn('Sync: CSRF истёк (419). Запись останется до след. сессии.');
+                // НЕ удаляем — попробуем после того, как пользователь зайдёт снова
+            } else if ([403, 404, 422].includes(response.status)) {
+                // Permanent error — не пытаемся бесконечно
+                console.warn('Sync: ошибка', response.status, '— удаляем из очереди');
+                await deletePendingAppointment(db, appointment.id);
+            } else {
+                console.warn('Sync: сервер вернул', response.status, '— оставляем в очереди');
             }
         } catch (error) {
-            console.error('Sync failed', error);
+            // Сеть упала — оставляем
+            console.error('Sync: сетевая ошибка', error);
         }
     }
 }
@@ -213,9 +223,8 @@ function openDatabase() {
 function getPendingAppointments(db) {
     return new Promise((resolve, reject) => {
         const tx = db.transaction('pendingAppointments', 'readonly');
-        const store = tx.objectStore('pendingAppointments');
-        const request = store.getAll();
-        request.onsuccess = () => resolve(request.result);
+        const request = tx.objectStore('pendingAppointments').getAll();
+        request.onsuccess = () => resolve(request.result || []);
         request.onerror = () => reject(request.error);
     });
 }

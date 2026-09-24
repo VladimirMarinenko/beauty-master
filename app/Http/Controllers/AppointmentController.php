@@ -102,7 +102,10 @@ class AppointmentController extends Controller
                 ->withInput();
         }
 
-        Appointment::create($validated);
+        $appointment = Appointment::create($validated);
+
+        // Синхронизируем транзакцию, если сразу completed
+        $this->syncTransaction($appointment);
 
         return redirect()->route('appointments.index')
             ->with('success', 'Запись добавлена!');
@@ -164,33 +167,8 @@ class AppointmentController extends Controller
 
         $appointment->update($validated);
 
-        if ($appointment->wasChanged('status')) {
-            $existingTransaction = Transaction::where('appointment_id', $appointment->id)
-                ->where('type', 'income')
-                ->first();
-
-            if ($appointment->status === 'completed') {
-                if (!$existingTransaction) {
-                    $appointment->user->transactions()->create([
-                        'type' => 'income',
-                        'amount' => $appointment->total_price,
-                        'transaction_date' => now(),
-                        'category' => 'Доход от услуги',
-                        'description' => 'Запись: ' . $appointment->client_name,
-                        'appointment_id' => $appointment->id,
-                    ]);
-                } else {
-                    $existingTransaction->update([
-                        'amount' => $appointment->total_price,
-                        'description' => 'Запись: ' . $appointment->client_name,
-                    ]);
-                }
-            } else {
-                if ($existingTransaction) {
-                    $existingTransaction->delete();
-                }
-            }
-        }
+        // Синхронизация транзакции
+        $this->syncTransaction($appointment);
 
         return redirect()->route('appointments.index')
             ->with('success', 'Запись обновлена!');
@@ -322,7 +300,7 @@ class AppointmentController extends Controller
 
         $services = Service::whereIn('id', $serviceIds)->get();
         if ($services->count() != count($serviceIds) || $services->where('user_id', '!=', Auth::id())->isNotEmpty()) {
-            return response()->json(['error' => 'Unauthorized services'], 403);
+            return response()->json(['error' => 'Услуга не найдена или принадлежит другому мастеру'], 403);
         }
 
         $isFixed = $request->boolean('is_fixed_price', true);
@@ -346,10 +324,11 @@ class AppointmentController extends Controller
             }
 
             if ($this->hasOverlap(Auth::id(), $validated['start_time'], $validated['end_time'], $appointment->id)) {
-                return response()->json(['error' => 'Overlap'], 422);
+                return response()->json(['error' => 'Время пересекается с другой записью'], 422);
             }
 
             $appointment->update($validated);
+            $this->syncTransaction($appointment);
 
             return response()->json(['success' => true]);
         }
@@ -357,12 +336,42 @@ class AppointmentController extends Controller
         $validated['user_id'] = Auth::id();
 
         if ($this->hasOverlap(Auth::id(), $validated['start_time'], $validated['end_time'])) {
-            return response()->json(['error' => 'Overlap'], 422);
+            return response()->json(['error' => 'Время пересекается с другой записью'], 422);
         }
 
-        Appointment::create($validated);
+        $appointment = Appointment::create($validated);
+        $this->syncTransaction($appointment);
 
         return response()->json(['success' => true]);
+    }
+    
+    private function syncTransaction(Appointment $appointment): void
+    {
+        $existingTransaction = Transaction::where('appointment_id', $appointment->id)
+            ->where('type', 'income')
+            ->first();
+
+        if ($appointment->status === 'completed') {
+            if (!$existingTransaction) {
+                $appointment->user->transactions()->create([
+                    'type' => 'income',
+                    'amount' => $appointment->total_price,
+                    'transaction_date' => $appointment->start_time ?? now(),
+                    'category' => 'Доход от услуги',
+                    'description' => 'Запись: ' . $appointment->client_name,
+                    'appointment_id' => $appointment->id,
+                ]);
+            } else {
+                $existingTransaction->update([
+                    'amount' => $appointment->total_price,
+                    'description' => 'Запись: ' . $appointment->client_name,
+                ]);
+            }
+        } else {
+            if ($existingTransaction) {
+                $existingTransaction->delete();
+            }
+        }
     }
 
     private function calculateTotals($services, int $customDuration, bool $isFixed): array
@@ -370,10 +379,8 @@ class AppointmentController extends Controller
         $basePrice = $services->sum('price');
         $baseDuration = $services->sum('duration');
 
-        // Длительность: если задана custom_duration — используем её, иначе стандартную
         $duration = $customDuration > 0 ? $customDuration : $baseDuration;
 
-        // Стоимость: фиксированная = прайс, не фиксированная = прайс × минуты
         if ($isFixed || $customDuration <= 0) {
             $price = $basePrice;
         } else {
