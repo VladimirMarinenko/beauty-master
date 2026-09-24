@@ -22,10 +22,8 @@
         </div>
     </div>
 
-    <!-- Подключаем FullCalendar через CDN -->
     <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.js'></script>
     <style>
-        /* Стилизация кнопок FullCalendar */
         .fc .fc-button {
             background-color: #ffffff;
             border: 1px solid #d1d5db;
@@ -44,9 +42,7 @@
             border-color: #4f46e5 !important;
             color: white !important;
         }
-        .fc .fc-button-group {
-            gap: 2px;
-        }
+        .fc .fc-button-group { gap: 2px; }
         .fc .fc-toolbar-title {
             font-size: 1rem;
             font-weight: 600;
@@ -62,13 +58,8 @@
             align-items: center;
             gap: 0.5rem;
         }
-        /* Улучшение отображения списка событий на мобильном */
-        .fc .fc-list-event {
-            cursor: pointer;
-        }
-        .fc .fc-list-event:hover {
-            background-color: #f9fafb;
-        }
+        .fc .fc-list-event { cursor: pointer; }
+        .fc .fc-list-event:hover { background-color: #f9fafb; }
         .fc .fc-list-day-cushion {
             background-color: #f3f4f6;
             padding: 0.5rem;
@@ -77,12 +68,8 @@
             font-weight: 600;
             color: #4f46e5;
         }
-        .fc .fc-list-event-title {
-            font-weight: 500;
-        }
-        .fc-list-day-side-text {
-            display: none;
-        }
+        .fc .fc-list-event-title { font-weight: 500; }
+        .fc-list-day-side-text { display: none; }
     </style>
     <script>
         document.addEventListener('DOMContentLoaded', function () {
@@ -112,14 +99,14 @@
                     timeGridWeek: {
                         slotMinTime: '06:00:00',
                         slotMaxTime: '22:00:00',
-                        slotDuration: '00:15:00',
-                        snapDuration: '00:15:00'
+                        slotDuration: '00:05:00',
+                        snapDuration: '00:05:00'
                     },
                     timeGridDay: {
                         slotMinTime: '06:00:00',
                         slotMaxTime: '22:00:00',
-                        slotDuration: '00:15:00',
-                        snapDuration: '00:15:00'
+                        slotDuration: '00:05:00',
+                        snapDuration: '00:05:00'
                     }
                 },
 
@@ -138,13 +125,12 @@
                 },
 
                 eventClick: function(info) {
-                    var appointmentId = info.event.id;
-                    window.location.href = '/appointments/' + appointmentId + '/edit';
+                    window.location.href = '/appointments/' + info.event.id + '/edit';
                 },
                 dateClick: function(info) {
-                    // Округляем время вниз до ближайших 15 минут
+                    // Округляем время вниз до ближайших 5 минут
                     var date = new Date(info.date);
-                    var minutes = Math.floor(date.getMinutes() / 15) * 15;
+                    var minutes = Math.floor(date.getMinutes() / 5) * 5;
                     date.setMinutes(minutes);
                     date.setSeconds(0);
                     var start = date.toISOString().slice(0, 16);
@@ -154,7 +140,11 @@
                 },
                 eventDidMount: function(info) {
                     var props = info.event.extendedProps;
-                    info.el.title = props.client_phone ? 'Тел: ' + props.client_phone : '';
+                    var lines = [];
+                    if (props.client_phone) lines.push('Тел: ' + props.client_phone);
+                    if (props.total_price) lines.push('Стоимость: ' + parseFloat(props.total_price).toFixed(0) + ' ₽');
+                    if (props.total_duration) lines.push('Длительность: ' + props.total_duration + ' мин');
+                    info.el.title = lines.join('\n');
                 }
             });
 
@@ -172,7 +162,5 @@
                 navigator.serviceWorker.ready.then(reg => reg.active.postMessage({ action: 'sync-now' }));
             }
         });
-
-
     </script>
 </x-app-layout>

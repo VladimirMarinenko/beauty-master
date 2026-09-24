@@ -22,6 +22,8 @@ class Appointment extends Model
         'service_ids',
         'total_price',
         'total_duration',
+        'is_fixed_price',
+        'custom_duration',
     ];
 
     protected $casts = [
@@ -30,6 +32,7 @@ class Appointment extends Model
         'service_ids' => 'array',
         'total_price' => 'decimal:2',
         'total_duration' => 'integer',
+        'is_fixed_price' => 'boolean',
     ];
 
     public function user()

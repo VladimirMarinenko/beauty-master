@@ -39,6 +39,8 @@ class AppointmentController extends Controller
                         'status' => $appointment->status,
                         'notes' => $appointment->notes,
                         'service_id' => $appointment->service_id,
+                        'total_price' => $appointment->total_price,
+                        'total_duration' => $appointment->total_duration,
                     ],
                 ];
             });
@@ -65,6 +67,8 @@ class AppointmentController extends Controller
             'end_time' => 'required|date_format:Y-m-d H:i|after:start_time',
             'status' => 'required|in:planned,completed,cancelled,no_show',
             'notes' => 'nullable|string',
+            'custom_duration' => 'nullable|integer|min:1',
+            'is_fixed_price' => 'nullable|boolean',
         ]);
 
         $serviceIds = json_decode($validated['service_ids'], true);
@@ -77,11 +81,18 @@ class AppointmentController extends Controller
             return back()->withErrors(['service_ids' => 'Одна из услуг не найдена или принадлежит другому мастеру']);
         }
 
+        $isFixed = $request->boolean('is_fixed_price', true);
+        $customDuration = $validated['custom_duration'] ?? null;
+
         $validated['user_id'] = Auth::id();
         $validated['service_id'] = $serviceIds[0];
         $validated['service_ids'] = $serviceIds;
-        $validated['total_price'] = $services->sum('price');
-        $validated['total_duration'] = $services->sum('duration');
+        $validated['is_fixed_price'] = $isFixed;
+        $validated['custom_duration'] = $customDuration;
+
+        $totals = $this->calculateTotals($services, (int) ($customDuration ?? 0), $isFixed);
+        $validated['total_price'] = $totals['price'];
+        $validated['total_duration'] = $totals['duration'];
         $validated['start_time'] = Carbon::parse($validated['start_time']);
         $validated['end_time'] = Carbon::parse($validated['end_time']);
 
@@ -117,6 +128,8 @@ class AppointmentController extends Controller
             'end_time' => 'required|date_format:Y-m-d H:i|after:start_time',
             'status' => 'required|in:planned,completed,cancelled,no_show',
             'notes' => 'nullable|string',
+            'custom_duration' => 'nullable|integer|min:1',
+            'is_fixed_price' => 'nullable|boolean',
         ]);
 
         $serviceIds = json_decode($validated['service_ids'], true);
@@ -129,10 +142,17 @@ class AppointmentController extends Controller
             return back()->withErrors(['service_ids' => 'Одна из услуг не найдена или принадлежит другому мастеру']);
         }
 
+        $isFixed = $request->boolean('is_fixed_price', true);
+        $customDuration = $validated['custom_duration'] ?? null;
+
         $validated['service_id'] = $serviceIds[0];
         $validated['service_ids'] = $serviceIds;
-        $validated['total_price'] = $services->sum('price');
-        $validated['total_duration'] = $services->sum('duration');
+        $validated['is_fixed_price'] = $isFixed;
+        $validated['custom_duration'] = $customDuration;
+
+        $totals = $this->calculateTotals($services, (int) ($customDuration ?? 0), $isFixed);
+        $validated['total_price'] = $totals['price'];
+        $validated['total_duration'] = $totals['duration'];
         $validated['start_time'] = Carbon::parse($validated['start_time']);
         $validated['end_time'] = Carbon::parse($validated['end_time']);
 
@@ -144,17 +164,31 @@ class AppointmentController extends Controller
 
         $appointment->update($validated);
 
-        if ($appointment->status === 'completed' && $appointment->wasChanged('status')) {
-            $existingTransaction = Transaction::where('appointment_id', $appointment->id)->first();
-            if (!$existingTransaction) {
-                $appointment->user->transactions()->create([
-                    'type' => 'income',
-                    'amount' => $appointment->total_price,
-                    'transaction_date' => now(),
-                    'category' => 'Доход от услуги',
-                    'description' => 'Запись: ' . $appointment->client_name,
-                    'appointment_id' => $appointment->id,
-                ]);
+        if ($appointment->wasChanged('status')) {
+            $existingTransaction = Transaction::where('appointment_id', $appointment->id)
+                ->where('type', 'income')
+                ->first();
+
+            if ($appointment->status === 'completed') {
+                if (!$existingTransaction) {
+                    $appointment->user->transactions()->create([
+                        'type' => 'income',
+                        'amount' => $appointment->total_price,
+                        'transaction_date' => now(),
+                        'category' => 'Доход от услуги',
+                        'description' => 'Запись: ' . $appointment->client_name,
+                        'appointment_id' => $appointment->id,
+                    ]);
+                } else {
+                    $existingTransaction->update([
+                        'amount' => $appointment->total_price,
+                        'description' => 'Запись: ' . $appointment->client_name,
+                    ]);
+                }
+            } else {
+                if ($existingTransaction) {
+                    $existingTransaction->delete();
+                }
             }
         }
 
@@ -204,7 +238,7 @@ class AppointmentController extends Controller
             'service_id' => 'required|exists:services,id',
             'date' => 'required|date_format:Y-m-d',
             'appointment_id' => 'nullable|integer',
-            'duration' => 'nullable|integer|min:5'
+            'duration' => 'nullable|integer|min:1'
         ]);
 
         $service = Service::findOrFail($request->service_id);
@@ -219,7 +253,7 @@ class AppointmentController extends Controller
 
         $startOfDay = $date->copy()->setTime(6, 0);
         $endOfDay = $date->copy()->setTime(22, 0);
-        $step = 15;
+        $step = 5;
 
         $busyIntervals = Appointment::where('user_id', Auth::id())
             ->where('status', '!=', 'cancelled')
@@ -277,6 +311,8 @@ class AppointmentController extends Controller
             'notes' => 'nullable|string',
             'appointment_id' => 'nullable|integer',
             '_method' => 'nullable|string',
+            'custom_duration' => 'nullable|integer|min:1',
+            'is_fixed_price' => 'nullable|boolean',
         ]);
 
         $serviceIds = json_decode($validated['service_ids'], true);
@@ -289,14 +325,20 @@ class AppointmentController extends Controller
             return response()->json(['error' => 'Unauthorized services'], 403);
         }
 
+        $isFixed = $request->boolean('is_fixed_price', true);
+        $customDuration = $validated['custom_duration'] ?? null;
+
         $validated['service_id'] = $serviceIds[0];
         $validated['service_ids'] = $serviceIds;
-        $validated['total_price'] = $services->sum('price');
-        $validated['total_duration'] = $services->sum('duration');
+        $validated['is_fixed_price'] = $isFixed;
+        $validated['custom_duration'] = $customDuration;
+
+        $totals = $this->calculateTotals($services, (int) ($customDuration ?? 0), $isFixed);
+        $validated['total_price'] = $totals['price'];
+        $validated['total_duration'] = $totals['duration'];
         $validated['start_time'] = Carbon::parse($validated['start_time']);
         $validated['end_time'] = Carbon::parse($validated['end_time']);
 
-        // Обновление существующей записи
         if (!empty($validated['appointment_id'])) {
             $appointment = Appointment::findOrFail($validated['appointment_id']);
             if ($appointment->user_id !== Auth::id()) {
@@ -312,7 +354,6 @@ class AppointmentController extends Controller
             return response()->json(['success' => true]);
         }
 
-        // Создание новой записи
         $validated['user_id'] = Auth::id();
 
         if ($this->hasOverlap(Auth::id(), $validated['start_time'], $validated['end_time'])) {
@@ -322,6 +363,27 @@ class AppointmentController extends Controller
         Appointment::create($validated);
 
         return response()->json(['success' => true]);
+    }
+
+    private function calculateTotals($services, int $customDuration, bool $isFixed): array
+    {
+        $basePrice = $services->sum('price');
+        $baseDuration = $services->sum('duration');
+
+        // Длительность: если задана custom_duration — используем её, иначе стандартную
+        $duration = $customDuration > 0 ? $customDuration : $baseDuration;
+
+        // Стоимость: фиксированная = прайс, не фиксированная = прайс × минуты
+        if ($isFixed || $customDuration <= 0) {
+            $price = $basePrice;
+        } else {
+            $price = $basePrice * $customDuration;
+        }
+
+        return [
+            'price' => round($price, 2),
+            'duration' => $duration,
+        ];
     }
 
     private function getStatusColor($status)
