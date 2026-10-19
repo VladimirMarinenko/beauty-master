@@ -9,17 +9,14 @@ use Carbon\Carbon;
 
 class TransactionController extends Controller
 {
-    // Список транзакций с фильтрами
     public function index(Request $request)
     {
         $query = Auth::user()->transactions()->orderBy('transaction_date', 'desc');
 
-        // Фильтр по типу
         if ($request->filled('type')) {
             $query->where('type', $request->type);
         }
 
-        // Фильтр по периоду
         if ($request->filled('period')) {
             $now = Carbon::now();
             switch ($request->period) {
@@ -48,20 +45,16 @@ class TransactionController extends Controller
         $totalIncome = (clone $statsQuery)->where('type', 'income')->sum('amount');
         $totalExpense = (clone $statsQuery)->where('type', 'expense')->sum('amount');
         $netProfit = $totalIncome - $totalExpense;
-
-        // Пагинация для списка
         $transactions = $query->paginate(20);
 
         return view('transactions.index', compact('transactions', 'totalIncome', 'totalExpense', 'netProfit'));
     }
 
-    // Форма создания
     public function create()
     {
         return view('transactions.create');
     }
 
-    // Сохранение
     public function store(Request $request)
     {
         $validated = $request->validate([
@@ -83,14 +76,12 @@ class TransactionController extends Controller
             ->with('success', 'Транзакция добавлена!');
     }
 
-    // Форма редактирования
     public function edit(Transaction $transaction)
     {
         $this->authorize('update', $transaction);
         return view('transactions.edit', compact('transaction'));
     }
 
-    // Обновление
     public function update(Request $request, Transaction $transaction)
     {
         $this->authorize('update', $transaction);
@@ -112,7 +103,6 @@ class TransactionController extends Controller
             ->with('success', 'Транзакция обновлена!');
     }
 
-    // Удаление
     public function destroy(Transaction $transaction)
     {
         $this->authorize('delete', $transaction);

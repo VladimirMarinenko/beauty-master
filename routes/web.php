@@ -31,13 +31,13 @@ require __DIR__.'/auth.php';
 Route::middleware(['auth'])->group(function () {
     Route::resource('services', ServiceController::class);
 
+    Route::resource('appointments', AppointmentController::class)->except(['show']);
     Route::get('/appointments/events', [AppointmentController::class, 'events'])->name('appointments.events');
     Route::get('/appointments/available-slots', [AppointmentController::class, 'availableSlots'])->name('appointments.available-slots');
-    Route::resource('appointments', AppointmentController::class)->except(['show']);
+    Route::post('/appointments/check-overlap', [AppointmentController::class, 'checkOverlap'])->name('appointments.check-overlap');
+    Route::post('/appointments/sync', [AppointmentController::class, 'sync'])->name('appointments.sync');
 
     Route::resource('transactions', TransactionController::class);
-
-    Route::post('/appointments/check-overlap', [AppointmentController::class, 'checkOverlap'])->name('appointments.check-overlap');
 
     Route::get('/attendance', [AttendanceController::class, 'index'])->name('attendance.index');
     Route::post('/attendance/process', [AttendanceController::class, 'process'])->name('attendance.process');
@@ -46,5 +46,5 @@ Route::middleware(['auth'])->group(function () {
 
     Route::post('/push-subscribe', [PushSubscriptionController::class, 'store'])->name('push.subscribe');
 
-    Route::post('/appointments/sync', [AppointmentController::class, 'sync'])->name('appointments.sync');
+    Route::resource('clients', \App\Http\Controllers\ClientController::class)->except(['show']);
 });

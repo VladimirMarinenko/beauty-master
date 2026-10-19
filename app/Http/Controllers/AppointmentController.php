@@ -51,15 +51,23 @@ class AppointmentController extends Controller
     public function create(Request $request)
     {
         $services = Auth::user()->services()->orderBy('name')->get();
+        $clients = Auth::user()->clients()
+            ->with('services')
+            ->orderByDesc('is_permanent')
+            ->orderBy('name')
+            ->get();
+
         $start = $request->query('start');
         $end = $request->query('end');
-        return view('appointments.create', compact('services', 'start', 'end'));
+
+        return view('appointments.create', compact('services', 'clients', 'start', 'end'));
     }
 
     public function store(Request $request)
     {
         $validated = $request->validate([
             'service_ids' => 'required|string',
+            'client_id' => 'nullable|integer|exists:clients,id',
             'client_name' => 'required|string|max:255',
             'client_phone' => 'nullable|string|max:255',
             'client_email' => 'nullable|email|max:255',
@@ -79,6 +87,13 @@ class AppointmentController extends Controller
         $services = Service::whereIn('id', $serviceIds)->get();
         if ($services->count() != count($serviceIds) || $services->where('user_id', '!=', Auth::id())->isNotEmpty()) {
             return back()->withErrors(['service_ids' => 'Одна из услуг не найдена или принадлежит другому мастеру']);
+        }
+
+        if (!empty($validated['client_id'])) {
+            $clientExists = Auth::user()->clients()->where('id', $validated['client_id'])->exists();
+            if (!$clientExists) {
+                return back()->withErrors(['client_id' => 'Клиент не найден']);
+            }
         }
 
         $isFixed = $request->boolean('is_fixed_price', true);
@@ -103,8 +118,6 @@ class AppointmentController extends Controller
         }
 
         $appointment = Appointment::create($validated);
-
-        // Синхронизируем транзакцию, если сразу completed
         $this->syncTransaction($appointment);
 
         return redirect()->route('appointments.index')
@@ -115,7 +128,13 @@ class AppointmentController extends Controller
     {
         $this->authorize('update', $appointment);
         $services = Auth::user()->services()->orderBy('name')->get();
-        return view('appointments.edit', compact('appointment', 'services'));
+        $clients = Auth::user()->clients()
+            ->with('services')
+            ->orderByDesc('is_permanent')
+            ->orderBy('name')
+            ->get();
+
+        return view('appointments.edit', compact('appointment', 'services', 'clients'));
     }
 
     public function update(Request $request, Appointment $appointment)
@@ -124,6 +143,7 @@ class AppointmentController extends Controller
 
         $validated = $request->validate([
             'service_ids' => 'required|string',
+            'client_id' => 'nullable|integer|exists:clients,id',
             'client_name' => 'required|string|max:255',
             'client_phone' => 'nullable|string|max:255',
             'client_email' => 'nullable|email|max:255',
@@ -143,6 +163,13 @@ class AppointmentController extends Controller
         $services = Service::whereIn('id', $serviceIds)->get();
         if ($services->count() != count($serviceIds) || $services->where('user_id', '!=', Auth::id())->isNotEmpty()) {
             return back()->withErrors(['service_ids' => 'Одна из услуг не найдена или принадлежит другому мастеру']);
+        }
+
+        if (!empty($validated['client_id'])) {
+            $clientExists = Auth::user()->clients()->where('id', $validated['client_id'])->exists();
+            if (!$clientExists) {
+                return back()->withErrors(['client_id' => 'Клиент не найден']);
+            }
         }
 
         $isFixed = $request->boolean('is_fixed_price', true);
@@ -166,8 +193,6 @@ class AppointmentController extends Controller
         }
 
         $appointment->update($validated);
-
-        // Синхронизация транзакции
         $this->syncTransaction($appointment);
 
         return redirect()->route('appointments.index')
@@ -280,6 +305,7 @@ class AppointmentController extends Controller
     {
         $validated = $request->validate([
             'service_ids' => 'required|string',
+            'client_id' => 'nullable|integer|exists:clients,id',
             'client_name' => 'required|string|max:255',
             'client_phone' => 'nullable|string|max:255',
             'client_email' => 'nullable|email|max:255',
@@ -301,6 +327,14 @@ class AppointmentController extends Controller
         $services = Service::whereIn('id', $serviceIds)->get();
         if ($services->count() != count($serviceIds) || $services->where('user_id', '!=', Auth::id())->isNotEmpty()) {
             return response()->json(['error' => 'Услуга не найдена или принадлежит другому мастеру'], 403);
+        }
+
+        // Проверка клиента (если пришёл)
+        if (!empty($validated['client_id'])) {
+            $clientExists = Auth::user()->clients()->where('id', $validated['client_id'])->exists();
+            if (!$clientExists) {
+                return response()->json(['error' => 'Клиент не найден'], 422);
+            }
         }
 
         $isFixed = $request->boolean('is_fixed_price', true);
@@ -344,7 +378,7 @@ class AppointmentController extends Controller
 
         return response()->json(['success' => true]);
     }
-    
+
     private function syncTransaction(Appointment $appointment): void
     {
         $existingTransaction = Transaction::where('appointment_id', $appointment->id)

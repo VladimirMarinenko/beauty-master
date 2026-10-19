@@ -11,6 +11,7 @@ class Appointment extends Model
 
     protected $fillable = [
         'user_id',
+        'client_id',
         'service_id',
         'client_name',
         'client_phone',
@@ -40,14 +41,16 @@ class Appointment extends Model
         return $this->belongsTo(User::class);
     }
 
+    public function client()
+    {
+        return $this->belongsTo(Client::class);
+    }
+
     public function service()
     {
         return $this->belongsTo(Service::class);
     }
 
-    /**
-     * Синхронизирует транзакцию дохода с состоянием записи.
-     */
     public function syncTransaction(): void
     {
         $existing = \App\Models\Transaction::where('appointment_id', $this->id)

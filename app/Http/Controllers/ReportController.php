@@ -26,13 +26,11 @@ class ReportController extends Controller
             $end = $now->copy()->endOfYear();
         }
 
-        // 1. Средний чек: среднее по фактической стоимости записей (total_price)
         $averageCheck = Appointment::where('user_id', Auth::id())
                 ->where('status', 'completed')
                 ->whereBetween('start_time', [$start, $end])
                 ->avg('total_price') ?? 0;
 
-        // 2. Загрузка по дням
         $appointmentsPerDay = Appointment::where('user_id', Auth::id())
             ->whereBetween('start_time', [$start, $end])
             ->whereIn('status', ['planned', 'completed'])
@@ -44,7 +42,6 @@ class ReportController extends Controller
                 return [$item->date => $item->count];
             });
 
-        // 3. Доходы/расходы по дням
         $transactionsPerDay = Transaction::where('user_id', Auth::id())
             ->whereBetween('transaction_date', [$start, $end])
             ->selectRaw('DATE(transaction_date) as date,
@@ -54,7 +51,6 @@ class ReportController extends Controller
             ->orderBy('date')
             ->get();
 
-        // 4. Категории расходов
         $expenseCategories = Transaction::where('user_id', Auth::id())
             ->where('type', 'expense')
             ->whereBetween('transaction_date', [$start, $end])
@@ -63,13 +59,11 @@ class ReportController extends Controller
             ->orderByDesc('total')
             ->get();
 
-        // 5. Отчёт по услугам — через service_ids + фактическая стоимость
         $completedAppointments = Appointment::where('user_id', Auth::id())
             ->where('status', 'completed')
             ->whereBetween('start_time', [$start, $end])
             ->get();
 
-        // Собираем все ID услуг, чтобы одним запросом получить названия
         $allServiceIds = [];
         foreach ($completedAppointments as $app) {
             $ids = $app->service_ids ?: [$app->service_id];
@@ -82,7 +76,6 @@ class ReportController extends Controller
         $serviceNames = Service::whereIn('id', array_keys($allServiceIds))
             ->pluck('name', 'id');
 
-        // Считаем выручку. total_price делится поровну между услугами в записи
         $serviceStats = [];
         foreach ($completedAppointments as $app) {
             $ids = $app->service_ids ?: [$app->service_id];
@@ -111,7 +104,6 @@ class ReportController extends Controller
             ->sortByDesc('revenue')
             ->values();
 
-        // Подготовка графиков
         $dates = collect();
         $daysRange = $start->copy()->startOfDay()->daysUntil($end->copy()->endOfDay());
         foreach ($daysRange as $day) {

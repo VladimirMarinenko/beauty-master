@@ -16,7 +16,6 @@ class PushSubscriptionController extends Controller
             'keys.auth' => 'required',
         ]);
 
-        // Удаляем старую подписку для этого endpoint
         PushSubscription::where('endpoint', $request->endpoint)->delete();
 
         Auth::user()->pushSubscriptions()->create([
