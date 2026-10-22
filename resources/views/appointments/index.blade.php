@@ -22,7 +22,7 @@
         </div>
     </div>
 
-    <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.js'></script>
+    <script src="{{ asset('vendor/fullcalendar/index.global.min.js') }}"></script>
     <style>
         #calendar { font-family: 'Figtree', sans-serif; }
 

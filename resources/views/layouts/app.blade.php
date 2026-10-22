@@ -15,10 +15,10 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Beauty Manager">
 
-    <!-- Air Datepicker -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/air-datepicker@3.5.3/air-datepicker.css">
-    <script src="https://cdn.jsdelivr.net/npm/air-datepicker@3.5.3/air-datepicker.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/imask@7.6.1/dist/imask.min.js"></script>
+    <!-- Air Datepicker (локально) -->
+    <link rel="stylesheet" href="{{ asset('vendor/air-datepicker/air-datepicker.css') }}">
+    <script src="{{ asset('vendor/air-datepicker/air-datepicker.js') }}"></script>
+    <script src="{{ asset('vendor/imask/imask.min.js') }}"></script>
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.bunny.net">
     <link href="https://fonts.bunny.net/css?family=figtree:400,500,600,700&display=swap" rel="stylesheet" />
@@ -140,7 +140,6 @@
         }
         .nav-item:hover { color: var(--primary); }
 
-        /* Push-кнопка — обычное состояние (правый верхний угол) */
         .push-button {
             position: fixed;
             top: 12px;
@@ -158,7 +157,6 @@
             transition: all 0.5s ease;
         }
 
-        /* Push-кнопка — режим привлечения внимания (по центру) */
         .push-button--attention {
             top: 50% !important;
             left: 50% !important;
@@ -177,7 +175,6 @@
             50%      { transform: translate(-50%, -50%) scale(1.05); }
         }
 
-        /* Затемнение фона */
         .push-overlay {
             position: fixed;
             inset: 0;
@@ -200,7 +197,6 @@
             z-index: 80;
         }
 
-        /* Air Datepicker кастомизация */
         .air-datepicker {
             font-family: 'Figtree', sans-serif;
             border-radius: 20px;
@@ -231,28 +227,24 @@
 </head>
 <body class="font-sans antialiased">
 <div class="min-h-screen" style="background: var(--bg);">
-    <!-- Page Heading -->
     @isset($header)
         <header class="bg-white shadow-sm" style="border-bottom: 1px solid var(--border);">
             <div class="app-container py-4">
                 {{ $header }}
             </div>
         </header>
-@endisset
+    @endisset
 
-<!-- Page Content -->
     <main class="pb-24" style="padding-bottom: calc(6rem + env(safe-area-inset-bottom));">
         {{ $slot }}
     </main>
 
-    <!-- Push-уведомления: оверлей + кнопка + статус -->
     <div id="push-overlay" class="push-overlay push-overlay--hidden"></div>
     <button id="push-subscribe-btn" class="push-button" style="display: none;">
         Включить уведомления
     </button>
     <span id="push-status" class="push-status"></span>
 
-    <!-- Нижняя навигация -->
     <nav class="bottom-nav fixed bottom-0 left-0 right-0 z-50">
         <div class="grid grid-cols-5 h-16">
             <a href="{{ route('appointments.index') }}"
@@ -302,7 +294,6 @@
             navigator.serviceWorker.register('/sw.js')
                 .then((registration) => {
                     console.log('SW зарегистрирован:', registration.scope);
-                    registration.update();
                 })
                 .catch((error) => {
                     console.log('Ошибка регистрации SW:', error);
@@ -310,60 +301,36 @@
         });
     }
 
-    // === Прямая синхронизация IndexedDB → сервер ===
-    // Работает без Service Worker. Не зависит от версии SW.
-    async function directSync() {
-        if (!navigator.onLine) return;
+    // === Передача CSRF-токена в Service Worker ===
+    function sendCsrfToSW() {
+        if (!('serviceWorker' in navigator)) return;
+        const token = document.querySelector('meta[name="csrf-token"]')?.content;
+        if (!token) return;
 
-        const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
-
-        try {
-            const db = await openDb();
-            const pending = await getAllPending(db);
-            if (!pending.length) {
-                console.log('[Sync] Очередь пуста');
-                return;
-            }
-
-            console.log('[Sync] Найдено записей в очереди:', pending.length);
-
-            for (const item of pending) {
-                const payload = { ...item };
-                delete payload.id;
-
-                const token = payload._token || csrf;
-
-                try {
-                    const response = await fetch('/appointments/sync', {
-                        method: 'POST',
-                        credentials: 'same-origin',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-CSRF-TOKEN': token,
-                            'X-Requested-With': 'XMLHttpRequest'
-                        },
-                        body: JSON.stringify(payload)
-                    });
-
-                    if (response.ok) {
-                        await deletePending(db, item.id);
-                        console.log('[Sync] Отправлено:', item.id);
-                    } else if ([403, 404, 422].includes(response.status)) {
-                        await deletePending(db, item.id);
-                        console.warn('[Sync] Ошибка', response.status, '— удаляем из очереди', item.id);
-                    } else {
-                        console.warn('[Sync] Сервер вернул', response.status, '— оставляем в очереди', item.id);
-                    }
-                } catch (err) {
-                    console.error('[Sync] Сетевая ошибка:', err);
-                    break; // сеть упала — не пытаемся остальные
-                }
-            }
-        } catch (err) {
-            console.error('[Sync] Ошибка IndexedDB:', err);
+        if (navigator.serviceWorker.controller) {
+            navigator.serviceWorker.controller.postMessage({ csrf: token });
+        } else {
+            navigator.serviceWorker.ready.then((reg) => {
+                reg.active?.postMessage({ csrf: token });
+            });
         }
     }
 
+    window.addEventListener('load', sendCsrfToSW);
+
+    navigator.serviceWorker?.addEventListener('message', (event) => {
+        if (event.data?.type === 'need-csrf') {
+            sendCsrfToSW();
+        }
+    });
+
+    window.addEventListener('online', () => {
+        navigator.serviceWorker.ready.then((reg) => {
+            reg.active?.postMessage({ action: 'sync-now' });
+        });
+    });
+
+    // === IndexedDB helpers (используются страницами для оффлайн-очереди) ===
     function openDb() {
         return new Promise((resolve, reject) => {
             const req = indexedDB.open('BeautyManagerDB', 1);
@@ -395,17 +362,6 @@
             tx.onerror = () => reject(tx.error);
         });
     }
-
-    // Синхронизация при загрузке страницы
-    window.addEventListener('load', function () {
-        if (navigator.onLine) directSync();
-    });
-
-    // И при восстановлении связи
-    window.addEventListener('online', function () {
-        console.log('[Sync] Связь восстановлена, запускаем синхронизацию...');
-        directSync();
-    });
 </script>
 
 <script>

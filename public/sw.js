@@ -1,4 +1,4 @@
-const CACHE_NAME = 'beauty-manager-v4';
+const CACHE_NAME = 'beauty-manager-v7';
 const DB_NAME = 'BeautyManagerDB';
 const DB_VERSION = 1;
 
@@ -10,38 +10,13 @@ const PRECACHE_URLS = [
     '/icons/icon-512.png'
 ];
 
-const EXTERNAL_URLS = [
-    'https://cdn.jsdelivr.net/npm/air-datepicker@3.5.3/air-datepicker.css',
-    'https://cdn.jsdelivr.net/npm/air-datepicker@3.5.3/air-datepicker.js',
-    'https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.js',
-    'https://fonts.bunny.net/css?family=figtree:400,500,600&display=swap'
-];
-
-// Текущий CSRF-токен (приходит через postMessage)
 let currentCsrfToken = null;
+let syncInFlight = null;
 
-// ============================================
-// Установка
-// ============================================
-self.addEventListener('install', (event) => {
-    event.waitUntil(
-        caches.open(CACHE_NAME).then((cache) => {
-            // addAll падает при ошибке одного URL — оборачиваем каждый по отдельности
-            return Promise.all([
-                ...PRECACHE_URLS.map(url => cache.add(url).catch(err => {
-                    console.warn('Precache skip:', url, err);
-                })),
-                ...EXTERNAL_URLS.map(url => cache.add(url).catch(err => {
-                    console.warn('External skip:', url, err);
-                }))
-            ]);
-        }).then(() => self.skipWaiting())
-    );
+self.addEventListener('install', () => {
+    self.skipWaiting();
 });
 
-// ============================================
-// Активация
-// ============================================
 self.addEventListener('activate', (event) => {
     event.waitUntil(
         caches.keys().then((names) =>
@@ -52,9 +27,6 @@ self.addEventListener('activate', (event) => {
     );
 });
 
-// ============================================
-// Fetch
-// ============================================
 self.addEventListener('fetch', (event) => {
     const { request } = event;
 
@@ -65,7 +37,6 @@ self.addEventListener('fetch', (event) => {
 
     const url = new URL(request.url);
 
-    // API-запросы не кэшируем
     if (url.pathname.startsWith('/appointments/events') ||
         url.pathname.startsWith('/appointments/check-overlap') ||
         url.pathname.startsWith('/appointments/available-slots') ||
@@ -93,22 +64,23 @@ self.addEventListener('fetch', (event) => {
         caches.match(request).then((cached) => {
             if (cached) return cached;
             return fetch(request).then((response) => {
-                if (response.status === 200) {
+                if (response.status === 200 && url.origin === self.location.origin) {
                     const clone = response.clone();
                     caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
                 }
                 return response;
-            }).catch(() => new Response('', {
-                status: 200,
-                headers: { 'Content-Type': 'text/css' }
-            }));
+            }).catch(() => {
+                const contentType = request.destination === 'script'
+                    ? 'application/javascript'
+                    : request.destination === 'style'
+                        ? 'text/css'
+                        : 'text/plain';
+                return new Response('', { status: 503, headers: { 'Content-Type': contentType } });
+            });
         })
     );
 });
 
-// ============================================
-// Push
-// ============================================
 self.addEventListener('push', function(event) {
     let data = { title: 'Beauty Manager', body: 'Новые уведомления', icon: '/icons/icon-192.png' };
     if (event.data) {
@@ -131,9 +103,6 @@ self.addEventListener('notificationclick', function(event) {
     event.waitUntil(clients.openWindow(event.notification.data.url || '/appointments'));
 });
 
-// ============================================
-// Background Sync + message от страницы
-// ============================================
 self.addEventListener('sync', function(event) {
     if (event.tag === 'sync-appointments') {
         event.waitUntil(syncAppointments());
@@ -142,34 +111,42 @@ self.addEventListener('sync', function(event) {
 
 self.addEventListener('message', function(event) {
     if (!event.data) return;
-
-    // Обновляем CSRF-токен, если пришёл
     if (event.data.csrf) {
         currentCsrfToken = event.data.csrf;
     }
-
     if (event.data.action === 'sync-now') {
         event.waitUntil(syncAppointments());
     }
 });
 
-// ============================================
-// Синхронизация
-// ============================================
 async function syncAppointments() {
+    if (syncInFlight) return syncInFlight;
+    syncInFlight = doSyncAppointments();
+    try {
+        await syncInFlight;
+    } finally {
+        syncInFlight = null;
+    }
+}
+
+async function doSyncAppointments() {
+    if (!currentCsrfToken) {
+        console.warn('Sync: нет CSRF-токена, пропускаем');
+        const clients = await self.clients.matchAll({ includeUncontrolled: true, type: 'window' });
+        clients.forEach(client => client.postMessage({ type: 'need-csrf' }));
+        return;
+    }
+
     const db = await openDatabase();
     const pending = await getPendingAppointments(db);
-
     if (!pending.length) return;
 
     console.log('Sync: найдено записей в очереди:', pending.length);
 
     for (const appointment of pending) {
         const payload = { ...appointment };
-        delete payload.id;   // id из IndexedDB не нужен серверу
-
-        const csrf = currentCsrfToken || payload._token || '';
-        delete payload._token;   // убираем из body, отдадим в заголовке
+        delete payload.id;
+        delete payload._token;
 
         try {
             const response = await fetch('/appointments/sync', {
@@ -177,7 +154,7 @@ async function syncAppointments() {
                 credentials: 'same-origin',
                 headers: {
                     'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': csrf,
+                    'X-CSRF-TOKEN': currentCsrfToken,
                     'X-Requested-With': 'XMLHttpRequest'
                 },
                 body: JSON.stringify(payload)
@@ -187,25 +164,24 @@ async function syncAppointments() {
                 await deletePendingAppointment(db, appointment.id);
                 console.log('Sync: отправлено', appointment.id);
             } else if (response.status === 419) {
-                console.warn('Sync: CSRF истёк (419). Запись останется до след. сессии.');
-                // НЕ удаляем — попробуем после того, как пользователь зайдёт снова
+                console.warn('Sync: CSRF истёк (419). Сбрасываем токен');
+                currentCsrfToken = null;
+                const clients = await self.clients.matchAll({ includeUncontrolled: true, type: 'window' });
+                clients.forEach(client => client.postMessage({ type: 'need-csrf' }));
+                break;
             } else if ([403, 404, 422].includes(response.status)) {
-                // Permanent error — не пытаемся бесконечно
                 console.warn('Sync: ошибка', response.status, '— удаляем из очереди');
                 await deletePendingAppointment(db, appointment.id);
             } else {
                 console.warn('Sync: сервер вернул', response.status, '— оставляем в очереди');
             }
         } catch (error) {
-            // Сеть упала — оставляем
             console.error('Sync: сетевая ошибка', error);
+            break;
         }
     }
 }
 
-// ============================================
-// IndexedDB helpers
-// ============================================
 function openDatabase() {
     return new Promise((resolve, reject) => {
         const request = indexedDB.open(DB_NAME, DB_VERSION);
@@ -215,8 +191,8 @@ function openDatabase() {
                 db.createObjectStore('pendingAppointments', { keyPath: 'id', autoIncrement: true });
             }
         };
-        request.onsuccess = function(event) { resolve(event.target.result); };
-        request.onerror = function(event) { reject(event.target.error); };
+        request.onsuccess = (event) => resolve(event.target.result);
+        request.onerror = (event) => reject(event.target.error);
     });
 }
 
