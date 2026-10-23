@@ -9,15 +9,34 @@ use Illuminate\Support\Facades\Auth;
 
 class ClientController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
+        $search = (string) $request->input('search', '');
+        $search = preg_replace('/[\p{Z}\s]+/u', ' ', $search);
+        $search = trim($search);
+        $search = mb_substr($search, 0, 100);
+
         $clients = Auth::user()->clients()
             ->with('services')
+            ->when($search !== '', function ($query) use ($search) {
+                $isPhone = Client::looksLikePhone($search);
+                $phoneDigits = $isPhone ? Client::normalizePhone($search) : null;
+
+                $query->where(function ($q) use ($search, $isPhone, $phoneDigits) {
+                    if ($isPhone) {
+                        $q->where('phone_normalized', 'like', "%{$phoneDigits}%");
+                    } else {
+                        $q->where('name', 'like', "%{$search}%")
+                            ->orWhere('contact', 'like', "%{$search}%");
+                    }
+                });
+            })
             ->orderByDesc('is_permanent')
             ->orderBy('name')
-            ->get();
+            ->paginate(20)
+            ->withQueryString();
 
-        return view('clients.index', compact('clients'));
+        return view('clients.index', compact('clients', 'search'));
     }
 
     public function create()

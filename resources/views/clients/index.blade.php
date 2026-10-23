@@ -9,6 +9,28 @@
     </x-slot>
 
     <div class="app-container">
+        {{-- Форма поиска --}}
+        <form method="GET" action="{{ route('clients.index') }}" class="mb-4">
+            <div class="flex gap-2 items-center">
+                <input
+                    type="text"
+                    name="search"
+                    value="{{ $search }}"
+                    placeholder="Имя, контакта,телефон или соц. сети"
+                    class="input-field flex-1"
+                    autofocus
+                >
+                <button type="submit" class="btn-primary" style="width: auto; padding: 10px 16px;">
+                    Найти
+                </button>
+                @if($search !== '')
+                    <a href="{{ route('clients.index') }}" class="text-sm font-medium" style="color: var(--muted); white-space: nowrap;">
+                        Сбросить
+                    </a>
+                @endif
+            </div>
+        </form>
+
         @if(session('success'))
             <div class="mb-4 text-green-600 text-sm font-medium bg-green-50 px-4 py-3 rounded-xl">
                 {{ session('success') }}
@@ -71,7 +93,28 @@
                     </div>
                 @endforeach
             </div>
+
+            {{-- Пагинация --}}
+            @if($clients->hasPages())
+                <div class="mt-6">
+                    {{ $clients->links() }}
+                </div>
+            @endif
+
+        @elseif($search !== '')
+            {{-- Поиск ничего не нашёл — это НЕ «клиентов нет» --}}
+            <div class="card p-8 text-center">
+                <div class="text-4xl mb-3">🔍</div>
+                <p class="font-medium" style="color: var(--muted);">
+                    По запросу «{{ $search }}» ничего не найдено.
+                </p>
+                <a href="{{ route('clients.index') }}" class="btn-primary mt-4" style="display: inline-block; width: auto;">
+                    Сбросить поиск
+                </a>
+            </div>
+
         @else
+            {{-- Клиентов действительно нет --}}
             <div class="card p-8 text-center">
                 <div class="text-4xl mb-3">👥</div>
                 <p class="font-medium" style="color: var(--muted);">Клиентов пока нет.</p>
