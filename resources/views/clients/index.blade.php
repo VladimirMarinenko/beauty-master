@@ -18,7 +18,6 @@
                     value="{{ $search }}"
                     placeholder="Имя, контакта,телефон или соц. сети"
                     class="input-field flex-1"
-                    autofocus
                 >
                 <button type="submit" class="btn-primary" style="width: auto; padding: 10px 16px;">
                     Найти
@@ -93,13 +92,6 @@
                     </div>
                 @endforeach
             </div>
-
-            {{-- Пагинация --}}
-            @if($clients->hasPages())
-                <div class="mt-6">
-                    {{ $clients->links() }}
-                </div>
-            @endif
 
         @elseif($search !== '')
             {{-- Поиск ничего не нашёл — это НЕ «клиентов нет» --}}

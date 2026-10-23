@@ -25,7 +25,6 @@
                 if (is_string($selectedServiceIds)) $selectedServiceIds = json_decode($selectedServiceIds, true);
                 if (!is_array($selectedServiceIds)) $selectedServiceIds = $appointment->service_ids ?: [$appointment->service_id];
 
-                // Определяем клиента
                 $selectedClientId = old('client_id', $appointment->client_id);
                 $selectedClient = $selectedClientId
                     ? $clients->firstWhere('id', $selectedClientId)
@@ -35,9 +34,7 @@
                 $isFixed = old('is_fixed_price', $appointment->is_fixed_price ?? true);
             @endphp
 
-            <!-- ============================================ -->
-                <!-- КЛИЕНТ -->
-                <!-- ============================================ -->
+            <!-- КЛИЕНТ -->
                 <div class="mb-5">
                     <label class="block text-sm font-semibold text-gray-700 mb-2">Клиент <span class="text-red-500">*</span></label>
                     <div class="relative">
@@ -51,7 +48,14 @@
                             </svg>
                         </button>
                         <div id="clients-dropdown" class="absolute z-30 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg hidden">
-                            <div class="p-2 max-h-72 overflow-y-auto">
+                            <div class="p-2 border-b border-gray-100">
+                                <input type="text" id="client-search-input"
+                                       class="input-field"
+                                       style="padding: 10px 14px; font-size: 14px;"
+                                       placeholder="Поиск: имя, телефон или соц. сеть"
+                                       autocomplete="off">
+                            </div>
+                            <div class="p-2 max-h-72 overflow-y-auto" id="clients-list">
                                 @foreach($clients as $client)
                                     <button type="button"
                                             class="client-option w-full text-left flex items-center gap-3 p-3 hover:bg-gray-50 rounded-lg cursor-pointer"
@@ -99,9 +103,7 @@
                     </p>
                 </div>
 
-                <!-- ============================================ -->
                 <!-- УСЛУГИ -->
-                <!-- ============================================ -->
                 <div class="mb-5">
                     <label class="block text-sm font-semibold text-gray-700 mb-2">Услуги</label>
                     <div class="relative">
@@ -126,7 +128,7 @@
                                                class="service-checkbox h-5 w-5 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500"
                                                data-price="{{ $service->price }}"
                                                data-duration="{{ $service->duration }}"
-                                            {{ in_array($service->id, $selectedServiceIds) ? 'checked' : '' }}>
+                                                {{ in_array($service->id, $selectedServiceIds) ? 'checked' : '' }}>
                                         <span class="flex-1">
                                             <span class="font-medium">{{ $service->name }}</span>
                                             <span class="text-sm text-gray-600 block">{{ number_format($service->price, 2) }} ₽ · {{ $service->duration }} мин</span>
@@ -143,9 +145,6 @@
                 <input type="hidden" name="total_price" id="total_price" value="{{ old('total_price', $appointment->total_price) }}">
                 <input type="hidden" name="total_duration" id="total_duration" value="{{ old('total_duration', $appointment->total_duration) }}">
 
-                <!-- ============================================ -->
-                <!-- ИМЯ (hidden) / ТЕЛЕФОН / EMAIL -->
-                <!-- ============================================ -->
                 <input type="hidden" name="client_name" id="client_name" value="{{ old('client_name', $appointment->client_name) }}">
 
                 <div class="mb-5">
@@ -158,9 +157,6 @@
                     <input type="email" name="client_email" id="client_email" value="{{ old('client_email', $appointment->client_email) }}" class="input-field" placeholder="example@mail.com">
                 </div>
 
-                <!-- ============================================ -->
-                <!-- НАЧАЛО -->
-                <!-- ============================================ -->
                 <div class="mb-5">
                     <label class="block text-sm font-semibold text-gray-700 mb-2">Начало</label>
                     <div class="grid grid-cols-2 gap-3">
@@ -181,7 +177,7 @@
                     <label class="flex items-center cursor-pointer">
                         <input type="checkbox" id="dense_mode" name="dense_mode"
                                class="h-5 w-5 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500"
-                            {{ old('dense_mode') ? 'checked' : '' }}>
+                                {{ old('dense_mode') ? 'checked' : '' }}>
                         <span class="ml-3 text-sm font-medium text-gray-700">Плотная запись (15 мин между клиентами)</span>
                     </label>
                 </div>
@@ -190,7 +186,7 @@
                     <label class="flex items-center cursor-pointer">
                         <input type="checkbox" id="custom_duration_toggle" name="custom_duration_toggle"
                                class="h-5 w-5 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500"
-                            {{ $hasCustomDuration ? 'checked' : '' }}>
+                                {{ $hasCustomDuration ? 'checked' : '' }}>
                         <span class="ml-3 text-sm font-medium text-gray-700">Своя длительность</span>
                     </label>
                 </div>
@@ -204,7 +200,7 @@
                         <label class="flex items-center cursor-pointer">
                             <input type="checkbox" id="is_fixed_price" name="is_fixed_price" value="1"
                                    class="h-5 w-5 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500"
-                                {{ $isFixed ? 'checked' : '' }}>
+                                    {{ $isFixed ? 'checked' : '' }}>
                             <span class="ml-3 text-sm font-medium text-gray-700">Фиксированная стоимость</span>
                         </label>
                         <p class="text-xs text-gray-500 mt-1 ml-8">
@@ -293,9 +289,13 @@
                 const clientStatus = document.getElementById('client-status');
                 const appointmentId = {{ $appointment->id }};
 
-                // =========================
-                // Время
-                // =========================
+                // Элементы поиска клиентов
+                const clientsListEl = document.getElementById('clients-list');
+                const clientSearchInput = document.getElementById('client-search-input');
+                const initialClientsHTML = clientsListEl ? clientsListEl.innerHTML : '';
+                let clientSearchTimer = null;
+
+                // === Время ===
                 startTimeInput.addEventListener('click', function () {
                     if (typeof this.showPicker === 'function') {
                         try { this.showPicker(); } catch (err) {}
@@ -343,9 +343,7 @@
                     combineDateTime(); recalculateEndTime(); checkOverlap(); loadAvailableSlots();
                 });
 
-                // =========================
-                // Дропдауны
-                // =========================
+                // === Дропдауны ===
                 dropdownBtn.addEventListener('click', function (e) {
                     e.stopPropagation();
                     clientsDropdown.classList.add('hidden');
@@ -356,6 +354,12 @@
                     e.stopPropagation();
                     dropdown.classList.add('hidden');
                     clientsDropdown.classList.toggle('hidden');
+
+                    if (!clientsDropdown.classList.contains('hidden') && clientSearchInput) {
+                        clientSearchInput.value = '';
+                        clientsListEl.innerHTML = initialClientsHTML;
+                        // Автофокус НЕ ставим — клавиатура на телефоне не всплывает сама
+                    }
                 });
 
                 document.addEventListener('click', function (e) {
@@ -363,54 +367,106 @@
                     if (!clientsDropdown.contains(e.target) && e.target !== clientsDropdownBtn) clientsDropdown.classList.add('hidden');
                 });
 
-                // =========================
-                // Выбор клиента
-                // =========================
-                document.querySelectorAll('.client-option').forEach(btn => {
-                    btn.addEventListener('click', function () {
-                        const id = this.dataset.clientId;
-                        const name = this.dataset.clientName;
-                        const phone = this.dataset.clientPhone || '';
-                        const contact = this.dataset.clientContact || '';
-                        const isPermanent = this.dataset.clientPermanent === '1';
-                        let serviceIds = [];
-                        try {
-                            serviceIds = JSON.parse(this.dataset.clientServices || '[]');
-                        } catch (e) { serviceIds = []; }
+                // === Выбор клиента (делегирование) ===
+                function escapeHtml(s) {
+                    return String(s ?? '').replace(/[&<>"']/g, m =>
+                        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m])
+                    );
+                }
 
-                        clientIdInput.value = id;
-                        clientNameInput.value = name;
+                function applyClientChoice(btn) {
+                    const id = btn.dataset.clientId;
+                    const name = btn.dataset.clientName;
+                    const phone = btn.dataset.clientPhone || '';
+                    const contact = btn.dataset.clientContact || '';
+                    const isPermanent = btn.dataset.clientPermanent === '1';
+                    let serviceIds = [];
+                    try { serviceIds = JSON.parse(btn.dataset.clientServices || '[]'); } catch (e) { serviceIds = []; }
 
-                        if (phone) clientPhoneInput.value = phone;
-                        if (contact && contact.includes('@')) clientEmailInput.value = contact;
+                    clientIdInput.value = id;
+                    clientNameInput.value = name;
+                    if (phone) clientPhoneInput.value = phone;
+                    if (contact && contact.includes('@')) clientEmailInput.value = contact;
 
-                        clientsPlaceholder.textContent = name;
+                    clientsPlaceholder.textContent = name;
 
-                        if (isPermanent && serviceIds.length > 0) {
-                            clientStatus.textContent = 'Постоянный клиент — услуги проставлены автоматически.';
-                        } else if (isPermanent) {
-                            clientStatus.textContent = 'Постоянный клиент (нет постоянныйх услуг).';
-                        } else {
-                            clientStatus.textContent = 'Разовая запись.';
-                        }
+                    if (isPermanent && serviceIds.length > 0) {
+                        clientStatus.textContent = 'Постоянный клиент — услуги проставлены автоматически.';
+                    } else if (isPermanent) {
+                        clientStatus.textContent = 'Постоянный клиент (нет постоянных услуг).';
+                    } else {
+                        clientStatus.textContent = 'Разовая запись.';
+                    }
 
-                        serviceCheckboxes.forEach(cb => cb.checked = false);
+                    serviceCheckboxes.forEach(cb => cb.checked = false);
+                    if (isPermanent && serviceIds.length > 0) {
+                        serviceIds.forEach(sid => {
+                            const cb = Array.from(serviceCheckboxes).find(c => c.value == sid);
+                            if (cb) cb.checked = true;
+                        });
+                    }
 
-                        if (isPermanent && serviceIds.length > 0) {
-                            serviceIds.forEach(sid => {
-                                const cb = Array.from(serviceCheckboxes).find(c => c.value == sid);
-                                if (cb) cb.checked = true;
-                            });
-                        }
+                    updateTotal();
+                    clientsDropdown.classList.add('hidden');
+                    if (clientSearchInput) clientSearchInput.value = '';
+                }
 
-                        updateTotal();
-                        clientsDropdown.classList.add('hidden');
-                    });
+                clientsListEl?.addEventListener('click', function (e) {
+                    const btn = e.target.closest('.client-option');
+                    if (!btn) return;
+                    applyClientChoice(btn);
                 });
 
-                // =========================
-                // Расчёт
-                // =========================
+                function renderClients(clients) {
+                    if (!clients.length) {
+                        clientsListEl.innerHTML = '<div class="p-4 text-center text-sm text-gray-500">Ничего не найдено</div>';
+                        return;
+                    }
+                    clientsListEl.innerHTML = clients.map(c => `
+        <button type="button"
+                class="client-option w-full text-left flex items-center gap-3 p-3 hover:bg-gray-50 rounded-lg cursor-pointer"
+                data-client-id="${c.id}"
+                data-client-name="${escapeHtml(c.name)}"
+                data-client-phone="${escapeHtml(c.phone || '')}"
+                data-client-contact="${escapeHtml(c.contact || '')}"
+                data-client-permanent="${c.is_permanent ? '1' : '0'}"
+                data-client-services='${JSON.stringify(c.service_ids || [])}'>
+            <div class="flex-1">
+                <div class="flex items-center gap-2">
+                    <span class="font-medium">${escapeHtml(c.name)}</span>
+                    ${c.is_permanent ? '<span class="text-xs font-medium px-2 py-0.5 rounded-full" style="background: #eef2ff; color: var(--primary);">постоянный</span>' : ''}
+                </div>
+                ${c.phone ? `<span class="text-xs text-gray-600 block">📞 ${escapeHtml(c.phone)}</span>` : ''}
+            </div>
+        </button>
+    `).join('');
+                }
+
+                clientSearchInput?.addEventListener('input', function () {
+                    const q = this.value.trim();
+                    clearTimeout(clientSearchTimer);
+
+                    if (!q) {
+                        clientsListEl.innerHTML = initialClientsHTML;
+                        return;
+                    }
+
+                    clientSearchTimer = setTimeout(async () => {
+                        try {
+                            const res = await fetch('{{ route('clients.search') }}?q=' + encodeURIComponent(q), {
+                                headers: { 'Accept': 'application/json' },
+                                credentials: 'same-origin'
+                            });
+                            if (!res.ok) return;
+                            const clients = await res.json();
+                            renderClients(clients);
+                        } catch (err) {
+                            console.error('Client search:', err);
+                        }
+                    }, 250);
+                });
+
+                // === Расчёт ===
                 function parseDateTime(str) {
                     if (!str || !str.includes(' ')) return null;
                     const [datePart, timePart] = str.split(' ');
@@ -573,9 +629,7 @@
                     updateTotal(); recalculateEndTime(); checkOverlap(); loadAvailableSlots();
                 });
 
-                // =========================
-                // Отправка
-                // =========================
+                // === Отправка ===
                 document.getElementById('appointment-form').addEventListener('submit', async function (e) {
                     e.preventDefault();
                     combineDateTime();
@@ -649,7 +703,6 @@
                     });
                 }
 
-                // Инициализация
                 updateTotal();
                 if (denseModeCheckbox.checked) loadAvailableSlots();
             });

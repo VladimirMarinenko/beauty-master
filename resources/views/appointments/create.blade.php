@@ -33,7 +33,14 @@
                             </svg>
                         </button>
                         <div id="clients-dropdown" class="absolute z-30 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg hidden">
-                            <div class="p-2 max-h-72 overflow-y-auto">
+                            <div class="p-2 border-b border-gray-100">
+                                <input type="text" id="client-search-input"
+                                       class="input-field"
+                                       style="padding: 10px 14px; font-size: 14px;"
+                                       placeholder="Поиск: имя, телефон или соц. сеть"
+                                       autocomplete="off">
+                            </div>
+                            <div class="p-2 max-h-72 overflow-y-auto" id="clients-list">
                                 @foreach($clients as $client)
                                     <button type="button"
                                             class="client-option w-full text-left flex items-center gap-3 p-3 hover:bg-gray-50 rounded-lg cursor-pointer"
@@ -48,8 +55,8 @@
                                                 <span class="font-medium">{{ $client->name }}</span>
                                                 @if($client->is_permanent)
                                                     <span class="text-xs font-medium px-2 py-0.5 rounded-full" style="background: #eef2ff; color: var(--primary);">
-                                                        постоянный
-                                                    </span>
+                                постоянный
+                            </span>
                                                 @endif
                                             </div>
                                             @if($client->phone)
@@ -317,6 +324,11 @@
                     e.stopPropagation();
                     dropdown.classList.add('hidden');
                     clientsDropdown.classList.toggle('hidden');
+
+                    if (!clientsDropdown.classList.contains('hidden') && clientSearchInput) {
+                        clientSearchInput.value = '';
+                        clientsListEl.innerHTML = initialClientsHTML;
+                    }
                 });
 
                 document.addEventListener('click', function (e) {
@@ -327,63 +339,107 @@
                 // =========================
                 // Обработка выбора клиента
                 // =========================
-                document.querySelectorAll('.client-option').forEach(btn => {
-                    btn.addEventListener('click', function () {
-                        const id = this.dataset.clientId;
-                        const name = this.dataset.clientName;
-                        const phone = this.dataset.clientPhone || '';
-                        const contact = this.dataset.clientContact || '';
-                        const isPermanent = this.dataset.clientPermanent === '1';
-                        let serviceIds = [];
+                const clientsListEl = document.getElementById('clients-list');
+                const clientSearchInput = document.getElementById('client-search-input');
+                const initialClientsHTML = clientsListEl ? clientsListEl.innerHTML : '';
+                let clientSearchTimer = null;
+
+                function escapeHtml(s) {
+                    return String(s ?? '').replace(/[&<>"']/g, m =>
+                        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m])
+                    );
+                }
+
+                function applyClientChoice(btn) {
+                    const id = btn.dataset.clientId;
+                    const name = btn.dataset.clientName;
+                    const phone = btn.dataset.clientPhone || '';
+                    const contact = btn.dataset.clientContact || '';
+                    const isPermanent = btn.dataset.clientPermanent === '1';
+                    let serviceIds = [];
+                    try { serviceIds = JSON.parse(btn.dataset.clientServices || '[]'); } catch (e) { serviceIds = []; }
+
+                    clientIdInput.value = id;
+                    clientNameInput.value = name;
+                    if (phone) clientPhoneInput.value = phone;
+                    if (contact && contact.includes('@')) clientEmailInput.value = contact;
+
+                    clientsPlaceholder.textContent = name;
+
+                    if (isPermanent && serviceIds.length > 0) {
+                        clientStatus.textContent = 'Постоянный клиент — услуги проставлены автоматически.';
+                    } else if (isPermanent) {
+                        clientStatus.textContent = 'Постоянный клиент (нет постоянных услуг).';
+                    } else {
+                        clientStatus.textContent = 'Разовая запись.';
+                    }
+
+                    serviceCheckboxes.forEach(cb => cb.checked = false);
+                    if (isPermanent && serviceIds.length > 0) {
+                        serviceIds.forEach(sid => {
+                            const cb = Array.from(serviceCheckboxes).find(c => c.value == sid);
+                            if (cb) cb.checked = true;
+                        });
+                    }
+
+                    updateTotal();
+                    clientsDropdown.classList.add('hidden');
+                    if (clientSearchInput) clientSearchInput.value = '';
+                }
+
+                clientsListEl?.addEventListener('click', function (e) {
+                    const btn = e.target.closest('.client-option');
+                    if (!btn) return;
+                    applyClientChoice(btn);
+                });
+
+                function renderClients(clients) {
+                    if (!clients.length) {
+                        clientsListEl.innerHTML = '<div class="p-4 text-center text-sm text-gray-500">Ничего не найдено</div>';
+                        return;
+                    }
+                    clientsListEl.innerHTML = clients.map(c => `
+        <button type="button"
+                class="client-option w-full text-left flex items-center gap-3 p-3 hover:bg-gray-50 rounded-lg cursor-pointer"
+                data-client-id="${c.id}"
+                data-client-name="${escapeHtml(c.name)}"
+                data-client-phone="${escapeHtml(c.phone || '')}"
+                data-client-contact="${escapeHtml(c.contact || '')}"
+                data-client-permanent="${c.is_permanent ? '1' : '0'}"
+                data-client-services='${JSON.stringify(c.service_ids || [])}'>
+            <div class="flex-1">
+                <div class="flex items-center gap-2">
+                    <span class="font-medium">${escapeHtml(c.name)}</span>
+                    ${c.is_permanent ? '<span class="text-xs font-medium px-2 py-0.5 rounded-full" style="background: #eef2ff; color: var(--primary);">постоянный</span>' : ''}
+                </div>
+                ${c.phone ? `<span class="text-xs text-gray-600 block">📞 ${escapeHtml(c.phone)}</span>` : ''}
+            </div>
+        </button>
+    `).join('');
+                }
+
+                clientSearchInput?.addEventListener('input', function () {
+                    const q = this.value.trim();
+                    clearTimeout(clientSearchTimer);
+
+                    if (!q) {
+                        clientsListEl.innerHTML = initialClientsHTML;
+                        return;
+                    }
+
+                    clientSearchTimer = setTimeout(async () => {
                         try {
-                            serviceIds = JSON.parse(this.dataset.clientServices || '[]');
-                        } catch (e) { serviceIds = []; }
-
-                        // Проставляем client_id
-                        clientIdInput.value = id;
-
-                        // Подставляем имя в hidden-поле
-                        clientNameInput.value = name;
-
-                        // Подставляем телефон, если есть
-                        if (phone) {
-                            clientPhoneInput.value = phone;
-                        }
-
-                        // Подставляем email, если контакт похож на email
-                        if (contact && contact.includes('@')) {
-                            clientEmailInput.value = contact;
-                        }
-
-                        // Плейсхолдер кнопки
-                        clientsPlaceholder.textContent = name;
-
-                        // Статус под кнопкой
-                        if (isPermanent && serviceIds.length > 0) {
-                            clientStatus.textContent = 'Постоянный клиент — услуги проставлены автоматически.';
-                        } else if (isPermanent) {
-                            clientStatus.textContent = 'Постоянный клиент (нет постоянныйх услуг).';
-                        } else {
-                            clientStatus.textContent = 'Разовая запись.';
-                        }
-
-                        // Снимаем все галки с услуг
-                        serviceCheckboxes.forEach(cb => cb.checked = false);
-
-                        // Проставляем галки из постоянных услуг клиента
-                        if (isPermanent && serviceIds.length > 0) {
-                            serviceIds.forEach(sid => {
-                                const cb = Array.from(serviceCheckboxes).find(c => c.value == sid);
-                                if (cb) cb.checked = true;
+                            const res = await fetch('{{ route('clients.search') }}?q=' + encodeURIComponent(q), {
+                                headers: { 'Accept': 'application/json' },
+                                credentials: 'same-origin'
                             });
+                            if (!res.ok) return;
+                            const clients = await res.json();
+                            renderClients(clients);
+                        } catch (err) {
+                            console.error('Client search:', err);
                         }
-
-                        // Пересчитываем итог
-                        updateTotal();
-
-                        // Закрываем дропдаун
-                        clientsDropdown.classList.add('hidden');
-                    });
+                    }, 250);
                 });
 
                 // =========================

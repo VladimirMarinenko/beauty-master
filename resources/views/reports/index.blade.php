@@ -20,15 +20,23 @@
             </form>
         </div>
 
-        <!-- Средний чек и загрузка -->
+        <!-- Средний чек и количество выполненных записей -->
         <div class="grid grid-cols-2 gap-3 mb-4">
             <div class="card p-4 text-center">
                 <p class="text-xs font-medium" style="color: var(--muted);">Средний чек</p>
-                <p class="text-xl font-bold" style="color: var(--primary);">{{ number_format($averageCheck, 2) }} ₽</p>
+                <p class="text-xl font-bold" style="color: var(--primary);">{{ number_format($averageCheck, 2, '.', ' ') }} ₽</p>
+                <p class="text-xs mt-1" style="color: var(--muted);">
+                    {{ number_format($totalRevenue, 2, '.', ' ') }} ₽ /
+                    {{ $completedAppointmentsCount }}
+                    {{ trans_choice('запись|записи|записей', $completedAppointmentsCount) }}
+                </p>
             </div>
             <div class="card p-4 text-center">
-                <p class="text-xs font-medium" style="color: var(--muted);">Записей за период</p>
-                <p class="text-xl font-bold" style="color: var(--text);">{{ array_sum($appointmentsData) }}</p>
+                <p class="text-xs font-medium" style="color: var(--muted);">Выполнено записей</p>
+                <p class="text-xl font-bold" style="color: var(--text);">{{ $completedAppointmentsCount }}</p>
+                <p class="text-xs mt-1" style="color: var(--muted);">
+                    за {{ $period === 'week' ? 'неделю' : ($period === 'year' ? 'год' : 'месяц') }}
+                </p>
             </div>
         </div>
 
@@ -58,9 +66,13 @@
                 <h3 class="text-base font-semibold mb-3" style="color: var(--text);">Выручка по услугам</h3>
                 <div class="space-y-2">
                     @foreach($serviceReport as $item)
-                        <div class="flex justify-between items-center py-2 border-b border-gray-100">
+                        <div class="flex justify-between items-center py-2 border-b border-gray-100 gap-3">
                             <span class="text-sm" style="color: var(--text);">{{ $item->name }}</span>
-                            <span class="text-sm font-semibold" style="color: var(--muted);">{{ $item->count }} раз · {{ number_format($item->revenue, 2) }} ₽</span>
+                            <span class="text-sm font-semibold flex-shrink-0" style="color: var(--muted);">
+                                {{ $item->count }}
+                                {{ trans_choice('раз|раза|раз', $item->count) }}
+                                · {{ number_format($item->revenue, 2, '.', ' ') }} ₽
+                            </span>
                         </div>
                     @endforeach
                 </div>
@@ -115,7 +127,7 @@
                     data: {
                         labels: {!! json_encode($dates->map(fn($d) => Carbon\Carbon::parse($d)->format('d.m'))) !!},
                         datasets: [{
-                            label: 'Количество записей',
+                            label: 'Выполненных записей',
                             data: {!! json_encode($appointmentsData) !!},
                             backgroundColor: '#6d5ae6',
                             borderRadius: 6

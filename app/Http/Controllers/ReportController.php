@@ -26,14 +26,22 @@ class ReportController extends Controller
             $end = $now->copy()->endOfYear();
         }
 
-        $averageCheck = Appointment::where('user_id', Auth::id())
-                ->where('status', 'completed')
-                ->whereBetween('start_time', [$start, $end])
-                ->avg('total_price') ?? 0;
-
-        $appointmentsPerDay = Appointment::where('user_id', Auth::id())
+        // === Только выполненные записи за период ===
+        $completedAppointments = Appointment::where('user_id', Auth::id())
+            ->where('status', 'completed')
             ->whereBetween('start_time', [$start, $end])
-            ->whereIn('status', ['planned', 'completed'])
+            ->get();
+
+        $completedAppointmentsCount = $completedAppointments->count();
+        $totalRevenue = (float) $completedAppointments->sum('total_price');
+        $averageCheck = $completedAppointmentsCount > 0
+            ? $totalRevenue / $completedAppointmentsCount
+            : 0.0;
+
+        // === Выполненные записи по дням ===
+        $appointmentsPerDay = Appointment::where('user_id', Auth::id())
+            ->where('status', 'completed')
+            ->whereBetween('start_time', [$start, $end])
             ->selectRaw('DATE(start_time) as date, COUNT(*) as count')
             ->groupBy('date')
             ->orderBy('date')
@@ -42,6 +50,7 @@ class ReportController extends Controller
                 return [$item->date => $item->count];
             });
 
+        // === Транзакции по дням ===
         $transactionsPerDay = Transaction::where('user_id', Auth::id())
             ->whereBetween('transaction_date', [$start, $end])
             ->selectRaw('DATE(transaction_date) as date,
@@ -51,6 +60,7 @@ class ReportController extends Controller
             ->orderBy('date')
             ->get();
 
+        // === Расходы по категориям ===
         $expenseCategories = Transaction::where('user_id', Auth::id())
             ->where('type', 'expense')
             ->whereBetween('transaction_date', [$start, $end])
@@ -59,11 +69,7 @@ class ReportController extends Controller
             ->orderByDesc('total')
             ->get();
 
-        $completedAppointments = Appointment::where('user_id', Auth::id())
-            ->where('status', 'completed')
-            ->whereBetween('start_time', [$start, $end])
-            ->get();
-
+        // === Разбивка по услугам (доля выручки, пропорционально числу услуг в записи) ===
         $allServiceIds = [];
         foreach ($completedAppointments as $app) {
             $ids = $app->service_ids ?: [$app->service_id];
@@ -73,6 +79,7 @@ class ReportController extends Controller
                 $allServiceIds[$sid] = true;
             }
         }
+
         $serviceNames = Service::whereIn('id', array_keys($allServiceIds))
             ->pluck('name', 'id');
 
@@ -82,14 +89,16 @@ class ReportController extends Controller
             if (is_string($ids)) $ids = json_decode($ids, true);
             if (!is_array($ids) || empty($ids)) $ids = [$app->service_id];
             $ids = array_values(array_unique($ids));
-            $share = count($ids) > 0 ? 1 / count($ids) : 0;
+            if (count($ids) === 0) continue;
+
+            $share = 1 / count($ids);
 
             foreach ($ids as $sid) {
                 if (!isset($serviceStats[$sid])) {
                     $serviceStats[$sid] = ['count' => 0, 'revenue' => 0];
                 }
                 $serviceStats[$sid]['count']++;
-                $serviceStats[$sid]['revenue'] += $app->total_price * $share;
+                $serviceStats[$sid]['revenue'] += (float) $app->total_price * $share;
             }
         }
 
@@ -99,11 +108,15 @@ class ReportController extends Controller
                     'name' => $serviceNames[$sid] ?? 'Услуга #' . $sid,
                     'count' => $data['count'],
                     'revenue' => round($data['revenue'], 2),
+                    'avg_per_appointment' => $data['count'] > 0
+                        ? round($data['revenue'] / $data['count'], 2)
+                        : 0,
                 ];
             })
             ->sortByDesc('revenue')
             ->values();
 
+        // === Массив дат для графика ===
         $dates = collect();
         $daysRange = $start->copy()->startOfDay()->daysUntil($end->copy()->endOfDay());
         foreach ($daysRange as $day) {
@@ -123,6 +136,8 @@ class ReportController extends Controller
         return view('reports.index', compact(
             'period',
             'averageCheck',
+            'totalRevenue',
+            'completedAppointmentsCount',
             'dates',
             'incomeData',
             'expenseData',

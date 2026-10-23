@@ -46,5 +46,7 @@ Route::middleware(['auth'])->group(function () {
 
     Route::post('/push-subscribe', [PushSubscriptionController::class, 'store'])->name('push.subscribe');
 
+    Route::get('/clients/search', [\App\Http\Controllers\ClientController::class, 'search'])
+        ->name('clients.search');
     Route::resource('clients', \App\Http\Controllers\ClientController::class)->except(['show']);
 });

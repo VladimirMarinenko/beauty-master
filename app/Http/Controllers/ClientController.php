@@ -24,7 +24,12 @@ class ClientController extends Controller
 
                 $query->where(function ($q) use ($search, $isPhone, $phoneDigits) {
                     if ($isPhone) {
-                        $q->where('phone_normalized', 'like', "%{$phoneDigits}%");
+                        $variants = Client::phoneSearchVariants($phoneDigits);
+                        $q->where(function ($inner) use ($variants) {
+                            foreach ($variants as $v) {
+                                $inner->orWhere('phone_normalized', 'like', "%{$v}%");
+                            }
+                        });
                     } else {
                         $q->where('name', 'like', "%{$search}%")
                             ->orWhere('contact', 'like', "%{$search}%");
@@ -33,10 +38,55 @@ class ClientController extends Controller
             })
             ->orderByDesc('is_permanent')
             ->orderBy('name')
-            ->paginate(20)
-            ->withQueryString();
+            ->get();
 
         return view('clients.index', compact('clients', 'search'));
+    }
+
+    public function search(Request $request)
+    {
+        $q = trim((string) $request->input('q', ''));
+
+        if (mb_strlen($q) < 1) {
+            return response()->json([]);
+        }
+
+        $q = preg_replace('/[\p{Z}\s]+/u', ' ', $q);
+        $q = mb_substr($q, 0, 100);
+
+        $isPhone = Client::looksLikePhone($q);
+        $phoneDigits = $isPhone ? Client::normalizePhone($q) : null;
+
+        $clients = Auth::user()->clients()
+            ->with('services')
+            ->where(function ($qq) use ($q, $isPhone, $phoneDigits) {
+                if ($isPhone) {
+                    $variants = Client::phoneSearchVariants($phoneDigits);
+                    $qq->where(function ($inner) use ($variants) {
+                        foreach ($variants as $v) {
+                            $inner->orWhere('phone_normalized', 'like', "%{$v}%");
+                        }
+                    });
+                } else {
+                    $qq->where('name', 'like', "%{$q}%")
+                        ->orWhere('contact', 'like', "%{$q}%");
+                }
+            })
+            ->orderByDesc('is_permanent')
+            ->orderBy('name')
+            ->limit(20)
+            ->get();
+
+        return response()->json($clients->map(function ($c) {
+            return [
+                'id' => $c->id,
+                'name' => $c->name,
+                'phone' => $c->phone,
+                'contact' => $c->contact,
+                'is_permanent' => (bool) $c->is_permanent,
+                'service_ids' => $c->services->pluck('id')->map(fn ($id) => (int) $id)->values()->all(),
+            ];
+        }));
     }
 
     public function create()
