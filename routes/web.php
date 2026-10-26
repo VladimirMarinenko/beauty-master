@@ -2,24 +2,37 @@
 
 use App\Http\Controllers\AppointmentController;
 use App\Http\Controllers\AttendanceController;
+use App\Http\Controllers\ClientCabinetController;
+use App\Http\Controllers\ClientController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\PushSubscriptionController;
 use App\Http\Controllers\ReportController;
+use App\Http\Controllers\ServiceController;
 use App\Http\Controllers\TransactionController;
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\ServiceController;
-use App\Http\Controllers\PushSubscriptionController;
 
+// =========================
+// Главная — редирект по роли
+// =========================
 Route::get('/', function () {
-    if (auth()->check()) {
-        return redirect()->route('appointments.index');
+    if (!auth()->check()) {
+        return redirect()->route('login');
     }
-    return redirect()->route('login');
+
+    return auth()->user()->isClient()
+        ? redirect()->route('me.index')
+        : redirect()->route('appointments.index');
 });
 
 Route::get('/dashboard', function () {
-    return redirect()->route('appointments.index');
+    return auth()->user()->isClient()
+        ? redirect()->route('me.index')
+        : redirect()->route('appointments.index');
 })->middleware(['auth'])->name('dashboard');
 
+// =========================
+// Профиль — для всех ролей
+// =========================
 Route::middleware('auth')->group(function () {
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
@@ -28,7 +41,10 @@ Route::middleware('auth')->group(function () {
 
 require __DIR__.'/auth.php';
 
-Route::middleware(['auth'])->group(function () {
+// =========================
+// Кабинет МАСТЕРА
+// =========================
+Route::middleware(['auth', 'role:master'])->group(function () {
     Route::resource('services', ServiceController::class);
 
     Route::resource('appointments', AppointmentController::class)->except(['show']);
@@ -46,7 +62,12 @@ Route::middleware(['auth'])->group(function () {
 
     Route::post('/push-subscribe', [PushSubscriptionController::class, 'store'])->name('push.subscribe');
 
-    Route::get('/clients/search', [\App\Http\Controllers\ClientController::class, 'search'])
-        ->name('clients.search');
-    Route::resource('clients', \App\Http\Controllers\ClientController::class)->except(['show']);
+    Route::get('/clients/live', [ClientController::class, 'live'])->name('clients.live');
+    Route::get('/clients/search', [ClientController::class, 'search'])->name('clients.search');
+    Route::resource('clients', ClientController::class)->except(['show']);
+});
+
+
+Route::middleware(['auth', 'role:client'])->prefix('me')->name('me.')->group(function () {
+    Route::get('/', [ClientCabinetController::class, 'index'])->name('index');
 });

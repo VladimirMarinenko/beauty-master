@@ -4,14 +4,17 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Appointment extends Model
 {
     use HasFactory;
 
     protected $fillable = [
-        'user_id',
+        'user_id',          // legacy — оставляем, будем синхронизировать с master_id
+        'master_id',
         'client_id',
+        'client_user_id',
         'service_id',
         'client_name',
         'client_phone',
@@ -36,30 +39,85 @@ class Appointment extends Model
         'is_fixed_price' => 'boolean',
     ];
 
-    public function user()
+    protected static function booted(): void
     {
-        return $this->belongsTo(User::class);
+        // Синхронизация legacy user_id ↔ master_id, пока не удалили user_id
+        static::saving(function (Appointment $appointment) {
+            if (!$appointment->master_id && $appointment->user_id) {
+                $appointment->master_id = $appointment->user_id;
+            }
+            if (!$appointment->user_id && $appointment->master_id) {
+                $appointment->user_id = $appointment->master_id;
+            }
+
+            // Автоподстановка client_user_id, если задан client_id
+            if (!$appointment->client_user_id && $appointment->client_id) {
+                $client = Client::find($appointment->client_id);
+                if ($client && $client->client_user_id) {
+                    $appointment->client_user_id = $client->client_user_id;
+                }
+            }
+        });
     }
 
-    public function client()
+    // =========================
+    // Relations
+    // =========================
+
+    /** Мастер, который ведёт запись */
+    public function master(): BelongsTo
     {
-        return $this->belongsTo(Client::class);
+        return $this->belongsTo(User::class, 'master_id');
     }
 
-    public function service()
+    /** Глобальный пользователь-клиент (если он зарегистрирован) */
+    public function clientUser(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'client_user_id');
+    }
+
+    /** Карточка клиента у мастера (локальные данные) */
+    public function client(): BelongsTo
+    {
+        return $this->belongsTo(Client::class, 'client_id');
+    }
+
+    /** Услуга (основная, legacy) */
+    public function service(): BelongsTo
     {
         return $this->belongsTo(Service::class);
     }
 
+    /**
+     * @deprecated Используйте master() или clientUser().
+     * Оставлено для совместимости со старым кодом.
+     */
+    public function user(): BelongsTo
+    {
+        return $this->master();
+    }
+
+    // =========================
+    // Синхронизация транзакции
+    // =========================
+
     public function syncTransaction(): void
     {
-        $existing = \App\Models\Transaction::where('appointment_id', $this->id)
+        $existing = Transaction::where('appointment_id', $this->id)
             ->where('type', 'income')
             ->first();
 
         if ($this->status === 'completed') {
+            // Транзакция принадлежит мастеру (user_id в transactions)
+            $masterId = $this->master_id ?: $this->user_id;
+            $master = $masterId ? User::find($masterId) : null;
+
+            if (!$master) {
+                return;
+            }
+
             if (!$existing) {
-                $this->user->transactions()->create([
+                $master->transactions()->create([
                     'type' => 'income',
                     'amount' => $this->total_price,
                     'transaction_date' => $this->start_time ?? now(),

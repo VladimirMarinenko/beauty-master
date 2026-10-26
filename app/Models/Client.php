@@ -4,15 +4,19 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 class Client extends Model
 {
     use HasFactory;
 
     protected $fillable = [
-        'user_id',
+        'master_id',
+        'client_user_id',
         'name',
         'phone',
+        'phone2',
         'contact',
         'is_permanent',
     ];
@@ -24,73 +28,62 @@ class Client extends Model
     protected static function booted(): void
     {
         static::saving(function (Client $client) {
-            $client->phone_normalized = self::normalizePhone($client->phone);
+            if ($client->isDirty('phone') || $client->phone_normalized === null) {
+                $client->phone_normalized = User::normalizePhone($client->phone);
+            }
+            if ($client->isDirty('phone2') || $client->phone2_normalized === null) {
+                $client->phone2_normalized = User::normalizePhone($client->phone2);
+            }
         });
     }
 
-    public function user()
+    // =========================
+    // Relations
+    // =========================
+
+    /** Мастер, которому принадлежит карточка */
+    public function master(): BelongsTo
     {
-        return $this->belongsTo(User::class);
+        return $this->belongsTo(User::class, 'master_id');
     }
 
-    public function services()
+    /** Глобальный пользователь-клиент, если он зарегистрирован */
+    public function clientUser(): BelongsTo
     {
-        return $this->belongsToMany(Service::class);
+        return $this->belongsTo(User::class, 'client_user_id');
     }
 
-    public static function normalizePhone(?string $phone): ?string
+    /** Записи этой карточки у мастера */
+    public function appointments()
     {
-        if ($phone === null || $phone === '') {
-            return null;
-        }
-
-        $digits = preg_replace('/\D+/u', '', $phone);
-
-        if ($digits === '') {
-            return null;
-        }
-
-        if (strlen($digits) === 11 && $digits[0] === '8') {
-            $digits = '7' . substr($digits, 1);
-        }
-
-        return $digits;
+        return $this->hasMany(Appointment::class, 'client_id');
     }
 
-    public static function looksLikePhone(string $value): bool
+    /** Услуги, которые клиент постоянно делает у этого мастера */
+    public function services(): BelongsToMany
     {
-        if ($value === '') {
-            return false;
-        }
-
-        if (preg_match('/\p{L}/u', $value)) {
-            return false;
-        }
-
-        return strlen(preg_replace('/\D+/u', '', $value)) >= 3;
+        return $this->belongsToMany(Service::class, 'client_service');
     }
+
+    // =========================
+    // Legacy alias
+    // =========================
 
     /**
-     * Возвращает варианты цифровой строки для поиска по телефону:
-     * если начинается с 8 — добавляет вариант с 7, и наоборот.
-     * Так «8666» находит «7666…», а «7961» — «8961…».
+     * @deprecated Оставлено для совместимости со старым кодом.
+     * Используйте master() или clientUser().
      */
-    public static function phoneSearchVariants(string $digits): array
+    public function user(): BelongsTo
     {
-        if ($digits === '') {
-            return [];
-        }
+        return $this->master();
+    }
 
-        $variants = [$digits];
+    // =========================
+    // Scopes
+    // =========================
 
-        if (strlen($digits) >= 2) {
-            if ($digits[0] === '8') {
-                $variants[] = '7' . substr($digits, 1);
-            } elseif ($digits[0] === '7') {
-                $variants[] = '8' . substr($digits, 1);
-            }
-        }
-
-        return array_values(array_unique($variants));
+    public function scopeForMaster($query, int $masterId)
+    {
+        return $query->where('master_id', $masterId);
     }
 }
