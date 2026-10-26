@@ -11,9 +11,7 @@ use App\Http\Controllers\ServiceController;
 use App\Http\Controllers\TransactionController;
 use Illuminate\Support\Facades\Route;
 
-// =========================
-// Главная — редирект по роли
-// =========================
+
 Route::get('/', function () {
     if (!auth()->check()) {
         return redirect()->route('login');
@@ -30,9 +28,7 @@ Route::get('/dashboard', function () {
         : redirect()->route('appointments.index');
 })->middleware(['auth'])->name('dashboard');
 
-// =========================
-// Профиль — для всех ролей
-// =========================
+
 Route::middleware('auth')->group(function () {
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
@@ -41,9 +37,7 @@ Route::middleware('auth')->group(function () {
 
 require __DIR__.'/auth.php';
 
-// =========================
-// Кабинет МАСТЕРА
-// =========================
+
 Route::middleware(['auth', 'role:master'])->group(function () {
     Route::resource('services', ServiceController::class);
 
@@ -67,7 +61,9 @@ Route::middleware(['auth', 'role:master'])->group(function () {
     Route::resource('clients', ClientController::class)->except(['show']);
 });
 
-
+// =========================
+// Кабинет КЛИЕНТА
+// =========================
 Route::middleware(['auth', 'role:client'])->prefix('me')->name('me.')->group(function () {
     Route::get('/', [ClientCabinetController::class, 'index'])->name('index');
 });

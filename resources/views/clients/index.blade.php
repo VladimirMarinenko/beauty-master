@@ -9,24 +9,23 @@
     </x-slot>
 
     <div class="app-container">
-        {{-- Форма поиска --}}
-        <form method="GET" action="{{ route('clients.index') }}" class="mb-4">
+        {{-- Поиск --}}
+        <form method="GET" action="{{ route('clients.index') }}" class="mb-4" id="clients-search-form">
             <div class="flex gap-2 items-center">
                 <input
-                    type="text"
-                    name="search"
-                    value="{{ $search }}"
-                    placeholder="Имя, контакта,телефон или соц. сети"
-                    class="input-field flex-1"
+                        type="search"
+                        name="search"
+                        id="clients-search-input"
+                        value="{{ $search }}"
+                        placeholder="Имя, контакт, телефон или соц. сети"
+                        class="input-field flex-1"
+                        autocomplete="off"
                 >
-                <button type="submit" class="btn-primary" style="width: auto; padding: 10px 16px;">
-                    Найти
+                <button type="button" id="clients-search-reset"
+                        class="text-sm font-medium {{ $search !== '' ? '' : 'hidden' }}"
+                        style="color: var(--muted); white-space: nowrap; background: none; border: none; cursor: pointer;">
+                    Сбросить
                 </button>
-                @if($search !== '')
-                    <a href="{{ route('clients.index') }}" class="text-sm font-medium" style="color: var(--muted); white-space: nowrap;">
-                        Сбросить
-                    </a>
-                @endif
             </div>
         </form>
 
@@ -36,84 +35,100 @@
             </div>
         @endif
 
-        @if($clients->count() > 0)
-            <div class="space-y-3">
-                @foreach($clients as $client)
-                    <div class="card p-4">
-                        <div class="flex items-start justify-between gap-3">
-                            <div class="flex-1 min-w-0">
-                                <div class="flex items-center gap-2 flex-wrap">
-                                    <h4 class="font-semibold text-base" style="color: var(--text);">
-                                        {{ $client->name }}
-                                    </h4>
-                                    @if($client->is_permanent)
-                                        <span class="text-xs font-medium px-2 py-0.5 rounded-full" style="background: #eef2ff; color: var(--primary);">
-                                            постоянный
-                                        </span>
-                                    @endif
-                                </div>
-
-                                @if($client->phone)
-                                    <p class="text-sm mt-1" style="color: var(--muted);">
-                                        📞 {{ $client->phone }}
-                                    </p>
-                                @endif
-
-                                @if($client->contact)
-                                    <p class="text-sm mt-0.5" style="color: var(--muted);">
-                                        ✉️ {{ $client->contact }}
-                                    </p>
-                                @endif
-
-                                @if($client->is_permanent && $client->services->count() > 0)
-                                    <div class="mt-2 flex flex-wrap gap-1">
-                                        @foreach($client->services as $service)
-                                            <span class="text-xs px-2 py-0.5 rounded-full" style="background: var(--bg); color: var(--muted); border: 1px solid var(--border);">
-                                                {{ $service->name }}
-                                            </span>
-                                        @endforeach
-                                    </div>
-                                @endif
-                            </div>
-
-                            <div class="flex flex-col items-end space-y-2 ml-2 flex-shrink-0">
-                                <a href="{{ route('clients.edit', $client) }}" class="text-sm font-semibold" style="color: var(--primary);">
-                                    Изменить
-                                </a>
-                                <form action="{{ route('clients.destroy', $client) }}" method="POST">
-                                    @csrf
-                                    @method('DELETE')
-                                    <button type="submit" class="text-sm font-medium text-red-500" onclick="return confirm('Удалить клиента?')">
-                                        Удалить
-                                    </button>
-                                </form>
-                            </div>
-                        </div>
-                    </div>
-                @endforeach
-            </div>
-
-        @elseif($search !== '')
-            {{-- Поиск ничего не нашёл — это НЕ «клиентов нет» --}}
-            <div class="card p-8 text-center">
-                <div class="text-4xl mb-3">🔍</div>
-                <p class="font-medium" style="color: var(--muted);">
-                    По запросу «{{ $search }}» ничего не найдено.
-                </p>
-                <a href="{{ route('clients.index') }}" class="btn-primary mt-4" style="display: inline-block; width: auto;">
-                    Сбросить поиск
-                </a>
-            </div>
-
-        @else
-            {{-- Клиентов действительно нет --}}
-            <div class="card p-8 text-center">
-                <div class="text-4xl mb-3">👥</div>
-                <p class="font-medium" style="color: var(--muted);">Клиентов пока нет.</p>
-                <a href="{{ route('clients.create') }}" class="btn-primary mt-4" style="display: inline-block; width: auto;">
-                    Добавить первого клиента
-                </a>
-            </div>
-        @endif
+        <div id="clients-list-container" style="transition: opacity 0.15s;">
+            @include('clients._list')
+        </div>
     </div>
+
+    @push('scripts')
+        <script>
+            document.addEventListener('DOMContentLoaded', function () {
+                const form = document.getElementById('clients-search-form');
+                const input = document.getElementById('clients-search-input');
+                const container = document.getElementById('clients-list-container');
+                const resetBtn = document.getElementById('clients-search-reset');
+
+                if (!form || !input || !container) return;
+
+                let timer = null;
+                let abortCtrl = null;
+
+                function updateResetVisibility() {
+                    if (!resetBtn) return;
+                    if (input.value.trim() !== '') {
+                        resetBtn.classList.remove('hidden');
+                    } else {
+                        resetBtn.classList.add('hidden');
+                    }
+                }
+
+                function updateUrl(q) {
+                    const url = new URL(window.location.href);
+                    if (q) {
+                        url.searchParams.set('search', q);
+                    } else {
+                        url.searchParams.delete('search');
+                    }
+                    history.replaceState({}, '', url.toString());
+                }
+
+                async function runSearch() {
+                    const q = input.value.trim();
+
+                    if (abortCtrl) abortCtrl.abort();
+                    abortCtrl = new AbortController();
+
+                    container.style.opacity = '0.5';
+
+                    try {
+                        const res = await fetch(
+                            '{{ route('clients.live') }}?search=' + encodeURIComponent(q),
+                            {
+                                headers: {
+                                    'Accept': 'text/html',
+                                    'X-Requested-With': 'XMLHttpRequest'
+                                },
+                                credentials: 'same-origin',
+                                signal: abortCtrl.signal
+                            }
+                        );
+
+                        if (!res.ok) return;
+
+                        const html = await res.text();
+                        container.innerHTML = html;
+                        updateUrl(q);
+                        updateResetVisibility();
+                    } catch (err) {
+                        if (err.name !== 'AbortError') {
+                            console.error('Client search:', err);
+                        }
+                    } finally {
+                        container.style.opacity = '1';
+                    }
+                }
+
+                input.addEventListener('input', function () {
+                    clearTimeout(timer);
+                    timer = setTimeout(runSearch, 300);
+                    updateResetVisibility();
+                });
+
+                // Enter тоже запускает поиск (без перезагрузки)
+                form.addEventListener('submit', function (e) {
+                    e.preventDefault();
+                    clearTimeout(timer);
+                    runSearch();
+                });
+
+                resetBtn?.addEventListener('click', function () {
+                    input.value = '';
+                    clearTimeout(timer);
+                    runSearch();
+                });
+
+                updateResetVisibility();
+            });
+        </script>
+    @endpush
 </x-app-layout>

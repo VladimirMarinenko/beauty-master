@@ -120,9 +120,46 @@
         }
         .flex-between {
             display: flex;
-            justify-content: space-between;
+            justify-content: center;
             align-items: center;
             margin-top: 20px;
+        }
+
+        /* === Поле пароля с глазком === */
+        .password-wrapper {
+            position: relative;
+            display: block;
+        }
+        .password-wrapper input {
+            padding-right: 48px;
+        }
+        .password-toggle {
+            position: absolute;
+            top: 50%;
+            right: 10px;
+            transform: translateY(-50%);
+            width: 34px;
+            height: 34px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: transparent;
+            border: none;
+            padding: 0;
+            margin: 0;
+            cursor: pointer;
+            color: #7a7593;
+            border-radius: 8px;
+            transition: color 0.15s, background 0.15s;
+        }
+        .password-toggle:hover,
+        .password-toggle:active {
+            color: #6d5ae6;
+            background: rgba(109, 90, 230, 0.08);
+        }
+        .password-toggle svg {
+            pointer-events: none;
+            display: block;
         }
     </style>
 </head>
@@ -153,12 +190,34 @@
 
         <div class="form-group">
             <label for="password">Пароль</label>
-            <input id="password" type="password" name="password" required autocomplete="new-password">
+            <div class="password-wrapper">
+                <input id="password" type="password" name="password" required autocomplete="new-password">
+                <button type="button" class="password-toggle" data-toggle-for="password" aria-label="Показать пароль" tabindex="-1">
+                    <svg class="eye-closed" xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M3 3l18 18M10.584 10.587a2 2 0 002.828 2.828M9.363 5.365A9.466 9.466 0 0112 5c4.478 0 8.268 2.943 9.543 7a9.998 9.998 0 01-2.347 3.607M6.228 6.228A10.005 10.005 0 002.457 12c1.274 4.057 5.065 7 9.543 7a9.966 9.966 0 004.293-.958"/>
+                    </svg>
+                    <svg class="eye-open" xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="display:none;">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                    </svg>
+                </button>
+            </div>
         </div>
 
         <div class="form-group">
             <label for="password_confirmation">Подтверждение пароля</label>
-            <input id="password_confirmation" type="password" name="password_confirmation" required autocomplete="new-password">
+            <div class="password-wrapper">
+                <input id="password_confirmation" type="password" name="password_confirmation" required autocomplete="new-password">
+                <button type="button" class="password-toggle" data-toggle-for="password_confirmation" aria-label="Показать пароль" tabindex="-1">
+                    <svg class="eye-closed" xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M3 3l18 18M10.584 10.587a2 2 0 002.828 2.828M9.363 5.365A9.466 9.466 0 0112 5c4.478 0 8.268 2.943 9.543 7a9.998 9.998 0 01-2.347 3.607M6.228 6.228A10.005 10.005 0 002.457 12c1.274 4.057 5.065 7 9.543 7a9.966 9.966 0 004.293-.958"/>
+                    </svg>
+                    <svg class="eye-open" xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="display:none;">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                    </svg>
+                </button>
+            </div>
         </div>
 
         <button type="submit" class="btn">Зарегистрироваться</button>
@@ -168,5 +227,26 @@
         </div>
     </form>
 </div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        document.querySelectorAll('.password-toggle').forEach(function (btn) {
+            const targetId = btn.getAttribute('data-toggle-for');
+            const input = document.getElementById(targetId);
+            if (!input) return;
+
+            const eyeOpen   = btn.querySelector('.eye-open');
+            const eyeClosed = btn.querySelector('.eye-closed');
+
+            btn.addEventListener('click', function () {
+                const isPassword = input.type === 'password';
+                input.type = isPassword ? 'text' : 'password';
+                eyeOpen.style.display   = isPassword ? 'block' : 'none';
+                eyeClosed.style.display = isPassword ? 'none'  : 'block';
+                btn.setAttribute('aria-label', isPassword ? 'Скрыть пароль' : 'Показать пароль');
+            });
+        });
+    });
+</script>
 </body>
 </html>

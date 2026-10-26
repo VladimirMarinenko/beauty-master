@@ -11,38 +11,26 @@ class ClientController extends Controller
 {
     public function index(Request $request)
     {
-        $search = (string) $request->input('search', '');
-        $search = preg_replace('/[\p{Z}\s]+/u', ' ', $search);
-        $search = trim($search);
-        $search = mb_substr($search, 0, 100);
-
-        $clients = Auth::user()->clients()
-            ->with('services')
-            ->when($search !== '', function ($query) use ($search) {
-                $isPhone = Client::looksLikePhone($search);
-                $phoneDigits = $isPhone ? Client::normalizePhone($search) : null;
-
-                $query->where(function ($q) use ($search, $isPhone, $phoneDigits) {
-                    if ($isPhone) {
-                        $variants = Client::phoneSearchVariants($phoneDigits);
-                        $q->where(function ($inner) use ($variants) {
-                            foreach ($variants as $v) {
-                                $inner->orWhere('phone_normalized', 'like', "%{$v}%");
-                            }
-                        });
-                    } else {
-                        $q->where('name', 'like', "%{$search}%")
-                            ->orWhere('contact', 'like', "%{$search}%");
-                    }
-                });
-            })
-            ->orderByDesc('is_permanent')
-            ->orderBy('name')
-            ->get();
+        $search = $this->normalizeSearch($request);
+        $clients = $this->getFilteredClients($search);
 
         return view('clients.index', compact('clients', 'search'));
     }
 
+    /**
+     * AJAX-поиск на странице клиентов — возвращает готовый HTML partial.
+     */
+    public function live(Request $request)
+    {
+        $search = $this->normalizeSearch($request);
+        $clients = $this->getFilteredClients($search);
+
+        return view('clients._list', compact('clients', 'search'));
+    }
+
+    /**
+     * JSON-поиск для формы записи (dropdown клиентов).
+     */
     public function search(Request $request)
     {
         $q = trim((string) $request->input('q', ''));
@@ -180,6 +168,45 @@ class ClientController extends Controller
 
         return redirect()->route('clients.index')
             ->with('success', 'Клиент удалён!');
+    }
+
+    // =========================
+    // Helpers
+    // =========================
+
+    private function normalizeSearch(Request $request): string
+    {
+        $search = (string) $request->input('search', '');
+        $search = preg_replace('/[\p{Z}\s]+/u', ' ', $search);
+        $search = trim($search);
+        return mb_substr($search, 0, 100);
+    }
+
+    private function getFilteredClients(string $search)
+    {
+        return Auth::user()->clients()
+            ->with('services')
+            ->when($search !== '', function ($query) use ($search) {
+                $isPhone = Client::looksLikePhone($search);
+                $phoneDigits = $isPhone ? Client::normalizePhone($search) : null;
+
+                $query->where(function ($q) use ($search, $isPhone, $phoneDigits) {
+                    if ($isPhone) {
+                        $variants = Client::phoneSearchVariants($phoneDigits);
+                        $q->where(function ($inner) use ($variants) {
+                            foreach ($variants as $v) {
+                                $inner->orWhere('phone_normalized', 'like', "%{$v}%");
+                            }
+                        });
+                    } else {
+                        $q->where('name', 'like', "%{$search}%")
+                            ->orWhere('contact', 'like', "%{$search}%");
+                    }
+                });
+            })
+            ->orderByDesc('is_permanent')
+            ->orderBy('name')
+            ->get();
     }
 
     private function authorizeClient(Client $client): void
