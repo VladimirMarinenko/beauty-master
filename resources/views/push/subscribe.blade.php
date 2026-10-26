@@ -1,6 +1,6 @@
 @push('scripts')
     <script>
-        const VAPID_PUBLIC_KEY = '{{ config('webpush.vapid.public_key') }}';
+        const VAPID_PUBLIC_KEY = '{{ config('webpush.vapid.public_key') ?: 'BF5nVRociNyazVImsZpZN2ASUh3sIaC1HsPHCP7IydGKbHHcBhmlNUFQPJSJwOinQuC3F31rl6UTdDQe_IVFW7E' }}';
 
         function urlBase64ToUint8Array(base64String) {
             const padding = '='.repeat((4 - base64String.length % 4) % 4);
@@ -26,22 +26,32 @@
                     return;
                 }
 
+                if (!VAPID_PUBLIC_KEY) {
+                    throw new Error('VAPID public key is empty');
+                }
+
                 const registration = await navigator.serviceWorker.ready;
                 const subscription = await registration.pushManager.subscribe({
                     userVisibleOnly: true,
                     applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
                 });
 
-                await fetch('/push-subscribe', {
+                const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content
+                    || '{{ csrf_token() }}';
+
+                const response = await fetch('/push-subscribe', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                        'X-CSRF-TOKEN': csrfToken
                     },
                     body: JSON.stringify(subscription)
                 });
 
-                // Успех: убираем всё
+                if (!response.ok) {
+                    throw new Error('HTTP ' + response.status);
+                }
+
                 overlayEl.classList.add('push-overlay--hidden');
                 btnEl.classList.remove('push-button--attention');
                 btnEl.style.display = 'none';
@@ -56,28 +66,25 @@
             }
         }
 
-        document.addEventListener('DOMContentLoaded', async function() {
+        document.addEventListener('DOMContentLoaded', async function () {
             const btnEl = document.getElementById('push-subscribe-btn');
             const statusEl = document.getElementById('push-status');
             const overlayEl = document.getElementById('push-overlay');
 
             if (!btnEl || !statusEl || !overlayEl) return;
 
-            // Не поддерживается — тихо выходим
             if (!('Notification' in window) || !('serviceWorker' in navigator)) {
                 btnEl.style.display = 'none';
                 overlayEl.classList.add('push-overlay--hidden');
                 return;
             }
 
-            // Разрешение запрещено — не показываем ничего
             if (Notification.permission === 'denied') {
                 btnEl.style.display = 'none';
                 overlayEl.classList.add('push-overlay--hidden');
                 return;
             }
 
-            // Проверяем, есть ли уже активная подписка
             let hasSubscription = false;
             try {
                 const reg = await navigator.serviceWorker.ready;
@@ -87,14 +94,12 @@
                 console.log('Не удалось проверить подписку:', e);
             }
 
-            // Уже подписан — ничего не показываем
             if (hasSubscription && Notification.permission === 'granted') {
                 btnEl.style.display = 'none';
                 overlayEl.classList.add('push-overlay--hidden');
                 return;
             }
 
-            // Показываем кнопку по центру + затемнение на 15 секунд
             overlayEl.classList.remove('push-overlay--hidden');
             btnEl.style.display = 'inline-block';
             btnEl.classList.add('push-button--attention');
@@ -104,7 +109,6 @@
                 btnEl.classList.remove('push-button--attention');
             }, 15000);
 
-            // Клик — запрос разрешения (обязательно для iOS)
             btnEl.addEventListener('click', async () => {
                 statusEl.style.display = 'block';
                 statusEl.textContent = 'Запрос разрешения...';

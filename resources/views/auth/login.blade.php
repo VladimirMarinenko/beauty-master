@@ -65,7 +65,8 @@
             margin-bottom: 8px;
         }
         input[type="email"],
-        input[type="password"] {
+        input[type="password"],
+        input[type="text"] {
             width: 100%;
             border: 1px solid #e8e5f2;
             border-radius: 14px;
@@ -129,11 +130,48 @@
         .form-group {
             margin-bottom: 20px;
         }
-        .flex-between {
+        .text-center {
+            text-align: center;
+        }
+        .mt-6 {
+            margin-top: 24px;   /* ← отступ над «Зарегистрироваться» */
+        }
+
+        /* === Поле пароля с глазком === */
+        .password-wrapper {
+            position: relative;
+            display: block;
+        }
+        .password-wrapper input {
+            padding-right: 48px;   /* место под глазок */
+        }
+        .password-toggle {
+            position: absolute;
+            top: 50%;
+            right: 10px;
+            transform: translateY(-50%);
+            width: 34px;
+            height: 34px;
             display: flex;
-            justify-content: space-between;
             align-items: center;
-            margin-top: 20px;
+            justify-content: center;
+            background: transparent;
+            border: none;
+            padding: 0;
+            margin: 0;
+            cursor: pointer;
+            color: #7a7593;
+            border-radius: 8px;
+            transition: color 0.15s, background 0.15s;
+        }
+        .password-toggle:hover,
+        .password-toggle:active {
+            color: #6d5ae6;
+            background: rgba(109, 90, 230, 0.08);
+        }
+        .password-toggle svg {
+            pointer-events: none;
+            display: block;
         }
     </style>
 </head>
@@ -159,22 +197,54 @@
 
         <div class="form-group">
             <label for="password">Пароль</label>
-            <input id="password" type="password" name="password" required autocomplete="current-password">
+            <div class="password-wrapper">
+                <input id="password" type="password" name="password" required autocomplete="current-password">
+                <button type="button" class="password-toggle" id="password-toggle" aria-label="Показать пароль" tabindex="-1">
+                    <!-- «Закрытый глаз» — по умолчанию (пароль скрыт) -->
+                    <svg id="eye-closed" xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M3 3l18 18M10.584 10.587a2 2 0 002.828 2.828M9.363 5.365A9.466 9.466 0 0112 5c4.478 0 8.268 2.943 9.543 7a9.998 9.998 0 01-2.347 3.607M6.228 6.228A10.005 10.005 0 002.457 12c1.274 4.057 5.065 7 9.543 7a9.966 9.966 0 004.293-.958"/>
+                    </svg>
+                    <!-- «Открытый глаз» — когда пароль показан -->
+                    <svg id="eye-open" xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="display:none;">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                    </svg>
+                </button>
+            </div>
         </div>
 
         <div class="form-group">
             <label class="checkbox-label">
-                <input type="checkbox" name="remember">
+                <input type="checkbox" name="remember" {{ old('remember') ? 'checked' : '' }}>
                 Запомнить меня
             </label>
         </div>
 
         <button type="submit" class="btn">Войти</button>
 
-        <div class="text-center mt-4">
+        <div class="text-center mt-6">
             <a href="{{ route('register') }}" class="link">Нет аккаунта? Зарегистрироваться</a>
         </div>
     </form>
 </div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const toggle = document.getElementById('password-toggle');
+        const input  = document.getElementById('password');
+        const eyeOpen   = document.getElementById('eye-open');
+        const eyeClosed = document.getElementById('eye-closed');
+
+        if (!toggle || !input) return;
+
+        toggle.addEventListener('click', function () {
+            const isPassword = input.type === 'password';
+            input.type = isPassword ? 'text' : 'password';
+            eyeOpen.style.display   = isPassword ? 'block' : 'none';
+            eyeClosed.style.display = isPassword ? 'none'  : 'block';
+            toggle.setAttribute('aria-label', isPassword ? 'Скрыть пароль' : 'Показать пароль');
+        });
+    });
+</script>
 </body>
 </html>
