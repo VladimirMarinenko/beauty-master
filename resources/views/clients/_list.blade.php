@@ -13,11 +13,22 @@
                                     постоянный
                                 </span>
                             @endif
+                            @if($client->client_user_id)
+                                <span class="text-xs font-medium px-2 py-0.5 rounded-full" style="background: #ecfdf5; color: #10b981;">
+                                    зарегистрирован
+                                </span>
+                            @endif
                         </div>
 
                         @if($client->phone)
                             <p class="text-sm mt-1" style="color: var(--muted);">
                                 📞 {{ $client->phone }}
+                            </p>
+                        @endif
+
+                        @if($client->phone2)
+                            <p class="text-sm mt-0.5" style="color: var(--muted);">
+                                📞 {{ $client->phone2 }}
                             </p>
                         @endif
 

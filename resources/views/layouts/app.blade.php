@@ -152,7 +152,7 @@
             font-weight: 600;
             box-shadow: var(--shadow-soft);
             border: none;
-            z-index: 60;
+            z-index: 70;
             cursor: pointer;
             transition: all 0.5s ease;
         }
@@ -375,11 +375,10 @@
 
             IMask(el, {
                 mask: '+{7} (000) 000-00-00',
-                lazy: false,
+                lazy: true,       // ← пустое поле не заполняется маской
                 placeholderChar: '_',
                 prepare: function (str) { return str; },
-                commit: function (value, masked) {
-                }
+                commit: function (value, masked) {}
             });
         });
     }
@@ -387,7 +386,11 @@
     document.addEventListener('DOMContentLoaded', initPhoneMasks);
 </script>
 
-@include('push.subscribe')
+@auth
+    @if(auth()->user()->isMaster())
+        @include('push.subscribe')
+    @endif
+@endauth
 @stack('scripts')
 
 </body>

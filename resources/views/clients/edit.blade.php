@@ -28,6 +28,15 @@
                 </div>
 
                 <div class="mb-5">
+                    <label for="phone2" class="block text-sm font-semibold text-gray-700 mb-2">
+                        Телефон 2 (дополнительный)
+                    </label>
+                    <input type="tel" name="phone2" id="phone2" value="{{ old('phone2', $client->phone2) }}"
+                           class="input-field" placeholder="+7 (___) ___-__-__">
+                    @error('phone2') <p class="text-red-500 text-sm mt-1">{{ $message }}</p> @enderror
+                </div>
+
+                <div class="mb-5">
                     <label for="contact" class="block text-sm font-semibold text-gray-700 mb-2">
                         Соц. сети или почта
                     </label>
@@ -68,6 +77,14 @@
                 <button type="submit" class="btn-primary">Сохранить изменения</button>
             </form>
 
+            {{-- Слияние с другой карточкой --}}
+            <a href="{{ route('clients.merge', $client) }}"
+               class="btn-secondary mt-4"
+               style="display: block; text-align: center; background: #eef2ff; color: var(--primary); text-decoration: none;">
+                🔗 Слить с другим клиентом
+            </a>
+
+            {{-- Удаление --}}
             <form action="{{ route('clients.destroy', $client) }}" method="POST" class="mt-4" onsubmit="return confirm('Удалить клиента?')">
                 @csrf
                 @method('DELETE')

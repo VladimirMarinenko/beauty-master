@@ -9,17 +9,43 @@
     </x-slot>
 
     <div class="app-container">
+        {{-- Плашка «новые привязки по ссылке» --}}
+        @if(!empty($newAttachedCount) && $newAttachedCount > 0)
+            <div class="card p-4 mb-4" style="background: #eef2ff; border-color: var(--primary-light);">
+                <p class="text-sm font-semibold" style="color: var(--primary);">
+                    🔔 У вас {{ $newAttachedCount }}
+                    {{ trans_choice('новый клиент|новых клиента|новых клиентов', $newAttachedCount) }}
+                    по ссылке
+                </p>
+                <p class="text-xs mt-1" style="color: var(--text);">
+                    {{ $newAttachedNames->implode(', ') }}
+                    @if($newAttachedCount > 5)
+                        и ещё {{ $newAttachedCount - 5 }}
+                    @endif
+                </p>
+                <p class="text-xs mt-2" style="color: var(--muted);">
+                    Клиенты привязались сами через вашу ссылку. Проверьте, что карточки корректны.
+                </p>
+                <form method="POST" action="{{ route('clients.mark-notified') }}" class="mt-3">
+                    @csrf
+                    <button type="submit" class="btn-secondary" style="width: auto; padding: 8px 16px; font-size: 13px;">
+                        Понятно, скрыть
+                    </button>
+                </form>
+            </div>
+        @endif
+
         {{-- Поиск --}}
         <form method="GET" action="{{ route('clients.index') }}" class="mb-4" id="clients-search-form">
             <div class="flex gap-2 items-center">
                 <input
-                        type="search"
-                        name="search"
-                        id="clients-search-input"
-                        value="{{ $search }}"
-                        placeholder="Имя, контакт, телефон или соц. сети"
-                        class="input-field flex-1"
-                        autocomplete="off"
+                    type="search"
+                    name="search"
+                    id="clients-search-input"
+                    value="{{ $search }}"
+                    placeholder="Имя, контакт, телефон или соц. сети"
+                    class="input-field flex-1"
+                    autocomplete="off"
                 >
                 <button type="button" id="clients-search-reset"
                         class="text-sm font-medium {{ $search !== '' ? '' : 'hidden' }}"
@@ -114,7 +140,6 @@
                     updateResetVisibility();
                 });
 
-                // Enter тоже запускает поиск (без перезагрузки)
                 form.addEventListener('submit', function (e) {
                     e.preventDefault();
                     clearTimeout(timer);

@@ -24,6 +24,19 @@
                     <label for="phone" class="block text-sm font-semibold text-gray-700 mb-2">Телефон</label>
                     <input type="tel" name="phone" id="phone" value="{{ old('phone') }}"
                            class="input-field" placeholder="+7 (___) ___-__-__">
+                    @error('phone') <p class="text-red-500 text-sm mt-1">{{ $message }}</p> @enderror
+                </div>
+
+                <div class="mb-5">
+                    <label for="phone2" class="block text-sm font-semibold text-gray-700 mb-2">
+                        Телефон 2 (дополнительный)
+                    </label>
+                    <input type="tel" name="phone2" id="phone2" value="{{ old('phone2') }}"
+                           class="input-field" placeholder="+7 (___) ___-__-__">
+                    <p class="text-xs mt-1" style="color: var(--muted);">
+                        Необязательно. Пригодится, если у клиента два номера.
+                    </p>
+                    @error('phone2') <p class="text-red-500 text-sm mt-1">{{ $message }}</p> @enderror
                 </div>
 
                 <div class="mb-5">

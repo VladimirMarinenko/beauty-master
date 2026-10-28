@@ -2,93 +2,77 @@
 
 namespace App\Console\Commands;
 
+use App\Jobs\SendPushNotification;
 use App\Models\Appointment;
-use App\Models\PushSubscription;
-use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
-use Minishlink\WebPush\Subscription;
-use Minishlink\WebPush\WebPush;
 
 class SendDailyAppointmentsNotification extends Command
 {
     protected $signature = 'app:send-daily-appointments-notification';
-    protected $description = 'Отправляет push-уведомления о записях на завтра';
+    protected $description = 'Напоминания о записях на завтра (мастерам и клиентам)';
 
-    public function handle()
+    public function handle(): int
     {
-        $tomorrow = Carbon::tomorrow()->format('Y-m-d');
+        $tomorrow = Carbon::tomorrow();
+        $dateStr  = $tomorrow->format('Y-m-d');
 
-        // Получаем пользователей, у которых есть записи на завтра
-        $users = User::whereHas('appointments', function ($query) use ($tomorrow) {
-            $query->whereDate('start_time', $tomorrow)
-                ->where('status', 'planned');
-        })
-            ->with(['appointments' => function ($query) use ($tomorrow) {
-                $query->whereDate('start_time', $tomorrow)
-                    ->where('status', 'planned')
-                    ->with('service')
-                    ->orderBy('start_time');
-            }, 'pushSubscriptions'])
+        $appointments = Appointment::whereDate('start_time', $dateStr)
+            ->where('status', 'planned')
+            ->with(['master', 'clientUser', 'service'])
+            ->orderBy('start_time')
             ->get();
 
-        if ($users->isEmpty()) {
-            $this->info('Нет пользователей с записями на завтра.');
-            return 0;
+        if ($appointments->isEmpty()) {
+            $this->info('Нет записей на завтра.');
+            return self::SUCCESS;
         }
 
-        $webPush = new WebPush(
-            [
-                'VAPID' => [
-                    'subject' => config('webpush.vapid.subject'),
-                    'publicKey' => config('webpush.vapid.public_key'),
-                    'privateKey' => config('webpush.vapid.private_key'),
-                ],
-            ],
-            [
-                'timeout' => 10,
-                'TTL' => 3600,
-            ]
-        );
+        $sent = 0;
 
-        foreach ($users as $user) {
-            if ($user->pushSubscriptions->isEmpty()) continue;
+        // === Мастерам: все записи на завтра ===
+        $byMaster = $appointments->whereNotNull('master_id')->groupBy('master_id');
+        foreach ($byMaster as $masterId => $list) {
+            $master = $list->first()->master;
+            if (!$master) continue;
 
-            $appointmentsCount = $user->appointments->count();
-            $appointmentsList = $user->appointments->map(function ($app) {
-                return "{$app->start_time->format('H:i')} — {$app->client_name} ({$app->service->name})";
-            })->implode("\n");
+            $lines = $list->map(fn($a) =>
+                $a->start_time->format('H:i')
+                . ' — ' . $a->client_name
+                . ' (' . ($a->service?->name ?? 'услуга удалена') . ')'
+            )->implode("\n");
 
-            $payload = [
-                'title' => "Записи на завтра: {$appointmentsCount}",
-                'body' => $appointmentsList,
-                'url' => '/appointments'
-            ];
-
-            foreach ($user->pushSubscriptions as $subscription) {
-                $webPush->queueNotification(
-                    Subscription::create([
-                        'endpoint' => $subscription->endpoint,
-                        'publicKey' => $subscription->public_key,
-                        'authToken' => $subscription->auth_token,
-                    ]),
-                    json_encode($payload)
-                );
-            }
+            SendPushNotification::dispatch($master, [
+                'title' => '📅 Записи на завтра: ' . $list->count(),
+                'body'  => $lines,
+                'icon'  => '/icons/icon-192.png',
+                'url'   => '/appointments',
+            ]);
+            $sent++;
         }
 
-        // Отправляем и смотрим отчёты
-        $reports = $webPush->flush();
-        $successCount = 0;
-        foreach ($reports as $report) {
-            if ($report->isSuccess()) {
-                $successCount++;
-            } else {
-                $this->error('Ошибка отправки: ' . $report->getReason());
-            }
+        // === Клиентам: только их записи ===
+        $byClient = $appointments->whereNotNull('client_user_id')->groupBy('client_user_id');
+        foreach ($byClient as $clientUserId => $list) {
+            $clientUser = $list->first()->clientUser;
+            if (!$clientUser) continue;
+
+            $lines = $list->map(fn($a) =>
+                $a->start_time->format('H:i')
+                . ' — ' . ($a->master?->name ?? 'мастер')
+                . ' (' . ($a->service?->name ?? 'услуга удалена') . ')'
+            )->implode("\n");
+
+            SendPushNotification::dispatch($clientUser, [
+                'title' => '📅 Ваши записи на завтра: ' . $list->count(),
+                'body'  => $lines,
+                'icon'  => '/icons/icon-192.png',
+                'url'   => '/me/appointments',
+            ]);
+            $sent++;
         }
 
-        $this->info("Отправлено уведомлений: {$successCount}");
-        return 0;
+        $this->info("Записей: {$appointments->count()}, задач в очередь: {$sent}");
+        return self::SUCCESS;
     }
 }

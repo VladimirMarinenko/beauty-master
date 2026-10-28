@@ -17,7 +17,14 @@ class RoleMiddleware
         }
 
         if (!in_array($user->role, $roles, true)) {
-            abort(403, 'Доступ запрещён для вашей роли.');
+            if ($request->expectsJson()) {
+                abort(403, 'Доступ запрещён для вашей роли.');
+            }
+
+            $target = $user->isClient() ? 'me.index' : 'appointments.index';
+
+            return redirect()->route($target)
+                ->with('error', 'Вы были перенаправлены в свой раздел.');
         }
 
         return $next($request);

@@ -28,21 +28,45 @@ class AuthenticatedSessionController extends Controller
 
         $request->session()->regenerate();
 
-        // Получаем текущего пользователя
         $user = $request->user();
 
-        // Проверяем, есть ли прошедшие записи со статусом "planned"
+        // 1. Проверяем intended — куда пользователь шёл до логина
+        $intended = $request->session()->pull('url.intended');
+
+        if ($intended) {
+            $isMasterUrl = str_starts_with($intended, url('/appointments'))
+                || str_starts_with($intended, url('/clients'))
+                || str_starts_with($intended, url('/services'))
+                || str_starts_with($intended, url('/reports'))
+                || str_starts_with($intended, url('/transactions'))
+                || str_starts_with($intended, url('/attendance'))
+                || str_starts_with($intended, url('/invite'));
+
+            $isClientUrl = str_starts_with($intended, url('/me'));
+
+            $mismatch = ($user->isClient() && !$isClientUrl)
+                || ($user->isMaster() && $isClientUrl);
+
+            if (!$mismatch) {
+                return redirect()->to($intended);
+            }
+        }
+
+        // 2. Клиент — всегда в свой кабинет
+        if ($user->isClient()) {
+            return redirect()->route('me.index');
+        }
+
+        // 3. Мастер: если есть просроченные planned-записи → на подтверждение
         $hasPending = $user->appointments()
             ->where('status', 'planned')
             ->where('start_time', '<', now())
             ->exists();
 
-        // Если есть такие записи — отправляем на страницу подтверждения
         if ($hasPending) {
             return redirect()->route('attendance.index');
         }
 
-        // Иначе на календарь
         return redirect()->route('appointments.index');
     }
 
