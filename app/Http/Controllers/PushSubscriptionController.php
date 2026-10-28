@@ -26,4 +26,19 @@ class PushSubscriptionController extends Controller
 
         return response()->json(['success' => true]);
     }
+
+    public function destroy(Request $request)
+    {
+        $endpoint = $request->input('endpoint');
+
+        if (!$endpoint) {
+            return response()->json(['error' => 'endpoint required'], 422);
+        }
+
+        $request->user()->pushSubscriptions()
+            ->where('endpoint', $endpoint)
+            ->delete();
+
+        return response()->json(['ok' => true]);
+    }
 }

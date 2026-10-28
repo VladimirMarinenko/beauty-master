@@ -23,12 +23,26 @@ class AppointmentController extends Controller
             ->with('service')
             ->get()
             ->map(function ($appointment) {
-                $serviceIds = $appointment->service_ids ?: [$appointment->service_id];
-                $serviceNames = Service::whereIn('id', $serviceIds)->pluck('name')->implode(', ');
+                // service_ids — массив, service_id — legacy.
+                // Фильтруем null (услуга могла быть удалена → nullOnDelete).
+                $rawIds = $appointment->service_ids ?: [$appointment->service_id];
+                if (!is_array($rawIds)) {
+                    $rawIds = [];
+                }
+                $serviceIds = array_values(array_filter($rawIds, fn($id) => !empty($id)));
+
+                // Название услуг: либо из БД, либо «Услуга удалена»
+                $serviceNames = !empty($serviceIds)
+                    ? Service::whereIn('id', $serviceIds)->pluck('name')->implode(', ')
+                    : null;
+
+                $title = $appointment->client_name
+                    . ' — '
+                    . ($serviceNames ?: 'услуга удалена');
 
                 return [
                     'id' => $appointment->id,
-                    'title' => $appointment->client_name . ' — ' . $serviceNames,
+                    'title' => $title,
                     'start' => $appointment->start_time->format('Y-m-d\TH:i:s'),
                     'end' => $appointment->end_time->format('Y-m-d\TH:i:s'),
                     'backgroundColor' => $this->getStatusColor($appointment->status),
@@ -39,6 +53,8 @@ class AppointmentController extends Controller
                         'status' => $appointment->status,
                         'notes' => $appointment->notes,
                         'service_id' => $appointment->service_id,
+                        'service_ids' => $serviceIds,
+                        'service_names' => $serviceNames,
                         'total_price' => $appointment->total_price,
                         'total_duration' => $appointment->total_duration,
                     ],
@@ -241,7 +257,7 @@ class AppointmentController extends Controller
             'service_id' => 'required|exists:services,id',
             'date' => 'required|date_format:Y-m-d',
             'appointment_id' => 'nullable|integer',
-            'duration' => 'nullable|integer|min:1'
+            'duration' => 'nullable|integer|min:1',
         ]);
 
         $service = Service::findOrFail($request->service_id);
@@ -249,14 +265,29 @@ class AppointmentController extends Controller
             return response()->json(['error' => 'Услуга не найдена'], 403);
         }
 
-        $duration = $request->input('duration', $service->duration);
-
+        $duration = (int) $request->input('duration', $service->duration);
         $date = Carbon::parse($request->date)->startOfDay();
         $excludeId = $request->appointment_id;
 
-        $startOfDay = $date->copy()->setTime(6, 0);
-        $endOfDay = $date->copy()->setTime(22, 0);
-        $step = 5;
+        // Рабочие часы мастера на этот день недели
+        $dayConfig = Auth::user()->workHoursForDay($date->dayOfWeekIso);
+
+        if (!$dayConfig) {
+            return response()->json(['slots' => []]);
+        }
+
+        $startOfDay = $date->copy()->setTimeFromTimeString($dayConfig['start']);
+        $endOfDay = $date->copy()->setTimeFromTimeString($dayConfig['end']);
+
+        $breakStart = !empty($dayConfig['break_start'])
+            ? $date->copy()->setTimeFromTimeString($dayConfig['break_start'])
+            : null;
+
+        $breakEnd = !empty($dayConfig['break_end'])
+            ? $date->copy()->setTimeFromTimeString($dayConfig['break_end'])
+            : null;
+
+        $step = Auth::user()->effectiveSlotStep();
 
         $busyIntervals = Appointment::where('user_id', Auth::id())
             ->where('status', '!=', 'cancelled')
@@ -268,8 +299,8 @@ class AppointmentController extends Controller
             ->get(['start_time', 'end_time'])
             ->map(function ($app) {
                 return [
-                    'start' => $app->start_time->subMinutes(15),
-                    'end' => $app->end_time->addMinutes(15),
+                    'start' => $app->start_time->copy()->subMinutes(15),
+                    'end' => $app->end_time->copy()->addMinutes(15),
                 ];
             });
 
@@ -281,10 +312,21 @@ class AppointmentController extends Controller
             $slotEnd = $slotStart->copy()->addMinutes($duration);
 
             $isFree = true;
-            foreach ($busyIntervals as $busy) {
-                if ($slotStart < $busy['end'] && $slotEnd > $busy['start']) {
+
+            // Обед
+            if ($breakStart && $breakEnd) {
+                if ($slotStart < $breakEnd && $slotEnd > $breakStart) {
                     $isFree = false;
-                    break;
+                }
+            }
+
+            // Занятое время
+            if ($isFree) {
+                foreach ($busyIntervals as $busy) {
+                    if ($slotStart < $busy['end'] && $slotEnd > $busy['start']) {
+                        $isFree = false;
+                        break;
+                    }
                 }
             }
 

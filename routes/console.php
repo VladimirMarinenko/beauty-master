@@ -9,3 +9,10 @@ Artisan::command('inspire', function () {
 })->purpose('Display an inspiring quote');
 
 Schedule::command('app:send-daily-appointments-notification')->dailyAt('21:00');
+Schedule::command('push:send-reminders')->everyFifteenMinutes()->withoutOverlapping();
+
+Schedule::command('tests:notify')
+    ->everyThirtyMinutes()
+    ->withoutOverlapping()
+    ->runInBackground()
+    ->appendOutputTo(storage_path('logs/tests-notify.log'));
