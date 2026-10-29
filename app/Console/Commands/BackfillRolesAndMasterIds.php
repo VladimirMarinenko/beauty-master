@@ -55,6 +55,20 @@ class BackfillRolesAndMasterIds extends Command
         }
         $this->info('phone_normalized у users обновлён: ' . $usersWithPhone->count());
 
+        if (\Schema::hasColumn('clients', 'phone_normalized')) {
+            $clientsWithPhone = DB::table('clients')->whereNotNull('phone')->where('phone', '!=', '')
+                ->whereNull('phone_normalized')->get(['id', 'phone']);
+            foreach ($clientsWithPhone as $c) {
+                $digits = preg_replace('/\D+/u', '', $c->phone);
+                if ($digits === '') continue;
+                if (strlen($digits) === 11 && $digits[0] === '8') {
+                    $digits = '7' . substr($digits, 1);
+                }
+                DB::table('clients')->where('id', $c->id)->update(['phone_normalized' => $digits]);
+            }
+            $this->info('phone_normalized у clients обновлён: ' . $clientsWithPhone->count());
+        }
+
         if (\Schema::hasColumn('clients', 'phone2_normalized')) {
             $withPhone2 = DB::table('clients')->whereNotNull('phone2')->where('phone2', '!=', '')
                 ->whereNull('phone2_normalized')->get(['id', 'phone2']);

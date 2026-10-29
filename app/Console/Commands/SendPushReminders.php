@@ -9,15 +9,16 @@ use Illuminate\Console\Command;
 class SendPushReminders extends Command
 {
     protected $signature = 'push:send-reminders';
-    protected $description = 'Напоминания за 2 часа до приёма (клиенту и мастеру)';
+    protected $description = 'Напоминание за 1 час до приёма (клиенту и мастеру), один раз';
 
     public function handle(): int
     {
-        $from = now()->addHours(2)->subMinutes(15);
-        $to   = now()->addHours(2)->addMinutes(15);
+        $from = now()->addMinutes(59);
+        $to   = now()->addMinutes(74);
 
         $appointments = Appointment::where('status', 'planned')
-            ->whereBetween('start_time', [$from, $to])
+            ->where('start_time', '>=', $from)
+            ->where('start_time', '<', $to)
             ->with(['master', 'clientUser', 'service'])
             ->get();
 

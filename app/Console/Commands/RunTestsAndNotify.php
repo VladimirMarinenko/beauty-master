@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -21,12 +22,36 @@ class RunTestsAndNotify extends Command
             return self::FAILURE;
         }
 
+        // Сбрасываем кэш конфига, чтобы дочерний процесс не прочитал
+        // закэшированные боевые значения (mysql/beauty_master)
+        try {
+            Artisan::call('config:clear');
+        } catch (\Throwable $e) {
+            Log::warning('tests:notify — config:clear failed', ['error' => $e->getMessage()]);
+        }
+
         $this->info('Running tests...');
 
+        $cleanEnv = [
+            'APP_ENV'          => 'testing',
+            'APP_KEY'          => (string) config('app.key'),
+            'DB_CONNECTION'    => 'sqlite',
+            'DB_DATABASE'      => ':memory:',
+            'SESSION_DRIVER'   => 'array',
+            'CACHE_STORE'      => 'array',
+            'QUEUE_CONNECTION' => 'sync',
+            'MAIL_MAILER'      => 'array',
+            'BCRYPT_ROUNDS'    => '4',
+            'PATH'             => getenv('PATH') ?: '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
+            'HOME'             => getenv('HOME') ?: '/tmp',
+        ];
+
         $process = new \Symfony\Component\Process\Process(
-            ['php', 'artisan', 'test', '--compact'],
-            base_path()
+            ['php', 'artisan', 'test', '--compact', '--env=testing'],
+            base_path(),
+            $cleanEnv
         );
+
         $process->setTimeout(600);
         $process->run();
 
@@ -43,7 +68,6 @@ class RunTestsAndNotify extends Command
         $emoji  = $ok ? '✅' : '❌';
         $status = $ok ? 'Tests passed' : 'Tests FAILED';
 
-        // Если упали — добавляем хвост вывода для разбора
         $text = "{$emoji} <b>{$status}</b>\n"
             . '<i>' . now()->format('d.m.Y H:i') . '</i>' . "\n\n";
 
@@ -58,9 +82,9 @@ class RunTestsAndNotify extends Command
             $response = Http::timeout(15)->post(
                 "https://api.telegram.org/bot{$token}/sendMessage",
                 [
-                    'chat_id'    => $chatId,
-                    'text'       => $text,
-                    'parse_mode' => 'HTML',
+                    'chat_id'                  => $chatId,
+                    'text'                     => $text,
+                    'parse_mode'               => 'HTML',
                     'disable_web_page_preview' => true,
                 ]
             );

@@ -4,12 +4,10 @@ namespace Tests\Feature;
 
 use App\Models\Client;
 use App\Models\User;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 class ClientRegistrationTest extends TestCase
 {
-    use RefreshDatabase;
 
     private function createMaster(array $overrides = []): User
     {

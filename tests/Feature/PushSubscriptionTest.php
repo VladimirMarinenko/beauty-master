@@ -4,12 +4,10 @@ namespace Tests\Feature;
 
 use App\Models\PushSubscription;
 use App\Models\User;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 class PushSubscriptionTest extends TestCase
 {
-    use RefreshDatabase;
 
     private function master(): User
     {

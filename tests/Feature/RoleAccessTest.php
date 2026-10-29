@@ -5,12 +5,10 @@ namespace Tests\Feature;
 use App\Models\Appointment;
 use App\Models\Client;
 use App\Models\User;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 class RoleAccessTest extends TestCase
 {
-    use RefreshDatabase;
 
     private function master(array $overrides = []): User
     {

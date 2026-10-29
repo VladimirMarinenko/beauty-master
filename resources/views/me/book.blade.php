@@ -1,4 +1,14 @@
 <x-app-layout>
+
+    <style>
+        .air-datepicker-cell.day-unavailable {
+            background: #fee2e2 !important;
+            color: #ef4444 !important;
+            text-decoration: line-through;
+            cursor: not-allowed;
+        }
+    </style>
+
     <x-slot name="header">
         <div class="flex items-center justify-between">
             <h2 class="page-title">Запись к мастеру {{ $master->name }}</h2>
@@ -43,7 +53,7 @@
                                        class="service-radio h-5 w-5"
                                        data-duration="{{ $service->duration }}"
                                        data-price="{{ $service->price }}"
-                                    {{ old('service_id') == $service->id ? 'checked' : '' }}>
+                                        {{ old('service_id') == $service->id ? 'checked' : '' }}>
                                 <span class="flex-1">
                                     <span class="font-medium text-sm" style="color: var(--text);">{{ $service->name }}</span>
                                     <span class="text-xs block mt-0.5" style="color: var(--muted);">
@@ -114,12 +124,40 @@
                 const submitBtn = document.getElementById('book-submit');
 
                 const slotsUrl = @json(route('me.book.slots', ['master' => $master->id]));
+                const availabilityUrl = @json(route('me.book.availability', ['master' => $master->id]));
+
+                // JSON work_hours мастера: { "1": {...}, "6": null, "7": null }
+                const workHours = @json($master->work_hours ?? null);
 
                 let selectedDate = null;
                 let selectedSlot = null;
 
-                // AirDatepicker уже подключён в layouts/app.blade.php
-                new AirDatepicker(dateInput, {
+                // { 'Y-m-d': {available, reason} } — из /availability
+                let availability = {};
+                // кэш загруженных месяцев: `${serviceId}:${YYYY-MM}` -> true
+                const availabilityLoaded = {};
+                const loadingMonths = new Set();
+
+                // ===== Хелперы =====
+                function formatDateKey(date) {
+                    const y = date.getFullYear();
+                    const m = String(date.getMonth() + 1).padStart(2, '0');
+                    const d = String(date.getDate()).padStart(2, '0');
+                    return `${y}-${m}-${d}`;
+                }
+
+                function isoDayOfWeek(date) {
+                    const jsDay = date.getDay(); // 0=вс, 1=пн, ..., 6=сб
+                    return jsDay === 0 ? 7 : jsDay; // 1=пн, ..., 7=вс
+                }
+
+                function isHoliday(date) {
+                    if (!workHours) return false;
+                    const cfg = workHours[String(isoDayOfWeek(date))];
+                    return !cfg || !cfg.start || !cfg.end;
+                }
+
+                const dp = new AirDatepicker(dateInput, {
                     locale: {
                         days: ['Воскресенье','Понедельник','Вторник','Среда','Четверг','Пятница','Суббота'],
                         daysShort: ['Вс','Пн','Вт','Ср','Чт','Пт','Сб'],
@@ -130,14 +168,157 @@
                     },
                     dateFormat: 'yyyy-MM-dd',
                     minDate: new Date(),
+                    onRenderCell({ date, cellType }) {
+                        if (cellType !== 'day') return;
+
+                        // 1. Выходной по work_hours — работает в любом месяце
+                        if (isHoliday(date)) {
+                            return {
+                                disabled: true,
+                                classes: 'day-unavailable',
+                                attrs: { title: 'выходной' }
+                            };
+                        }
+
+                        // 2. Прошедшая дата
+                        const today = new Date();
+                        today.setHours(0, 0, 0, 0);
+                        const d = new Date(date);
+                        d.setHours(0, 0, 0, 0);
+                        if (d < today) {
+                            return {
+                                disabled: true,
+                                classes: 'day-unavailable',
+                                attrs: { title: 'прошло' }
+                            };
+                        }
+
+                        // 3. Нет свободных слотов — из availability
+                        const info = availability[formatDateKey(date)];
+                        if (info && info.available === false) {
+                            return {
+                                disabled: true,
+                                classes: 'day-unavailable',
+                                attrs: { title: info.reason || 'Недоступно' }
+                            };
+                        }
+                    },
                     onSelect: function ({ date, formattedDate }) {
-                        selectedDate = date ? formattedDate : null;
-                        dateInput.value = selectedDate || '';
+                        if (!date) {
+                            selectedDate = null;
+                            dateInput.value = '';
+                            slotsHint.classList.remove('hidden');
+                            slotsContainer.classList.add('hidden');
+                            slotsEmpty.classList.add('hidden');
+                            resetSubmit();
+                            return;
+                        }
+
+                        // Выходной — отказываем
+                        if (isHoliday(date)) {
+                            dp.clear();
+                            dateInput.value = '';
+                            selectedDate = null;
+                            slotsContainer.classList.add('hidden');
+                            slotsHint.classList.add('hidden');
+                            slotsEmpty.textContent = 'Это выходной день у мастера. Выберите другой.';
+                            slotsEmpty.classList.remove('hidden');
+                            resetSubmit();
+                            return;
+                        }
+
+                        // Услуга не выбрана
+                        if (!getSelectedService()) {
+                            dp.clear();
+                            dateInput.value = '';
+                            selectedDate = null;
+                            slotsContainer.classList.add('hidden');
+                            slotsEmpty.classList.add('hidden');
+                            slotsHint.textContent = 'Сначала выберите услугу.';
+                            slotsHint.classList.remove('hidden');
+                            resetSubmit();
+                            return;
+                        }
+
+                        // День недоступен по availability
+                        const info = availability[formatDateKey(date)];
+                        if (info && info.available === false) {
+                            dp.clear();
+                            dateInput.value = '';
+                            selectedDate = null;
+                            slotsContainer.classList.add('hidden');
+                            slotsHint.classList.add('hidden');
+                            slotsEmpty.textContent = 'Этот день недоступен: ' + (info.reason || 'нет свободного времени');
+                            slotsEmpty.classList.remove('hidden');
+                            resetSubmit();
+                            return;
+                        }
+
+                        selectedDate = formattedDate;
+                        dateInput.value = selectedDate;
+                        slotsHint.classList.add('hidden');
+                        slotsEmpty.classList.add('hidden');
                         loadSlots();
-                    }
+                    },
+                    onShow({ view, month, year }) {
+                        if (view === 'days') loadAvailabilityAround(month, year);
+                    },
+                    onMonthChange({ month, year }) { loadAvailabilityAround(month, year); },
+                    onYearChange({ month, year }) { loadAvailabilityAround(month, year); }
                 });
 
-                serviceRadios.forEach(r => r.addEventListener('change', loadSlots));
+                serviceRadios.forEach(r => r.addEventListener('change', () => {
+                    availability = {};
+                    for (const k in availabilityLoaded) delete availabilityLoaded[k];
+                    if (dp.viewDate) {
+                        loadAvailabilityAround(dp.viewDate.getMonth() + 1, dp.viewDate.getFullYear());
+                    }
+                    loadSlots();
+                }));
+
+                // ===== Загрузка доступности за 3 месяца (текущий ± 1) =====
+                function loadAvailabilityAround(month, year) {
+                    loadAvailability(month, year);
+
+                    let pm = month - 1, py = year;
+                    if (pm < 1) { pm = 12; py--; }
+                    loadAvailability(pm, py);
+
+                    let nm = month + 1, ny = year;
+                    if (nm > 12) { nm = 1; ny++; }
+                    loadAvailability(nm, ny);
+                }
+
+                async function loadAvailability(month, year) {
+                    const serviceId = getSelectedService();
+                    if (!serviceId) return;
+
+                    const m   = `${year}-${String(month).padStart(2, '0')}`;
+                    const key = `${serviceId}:${m}`;
+                    if (availabilityLoaded[key] || loadingMonths.has(key)) return;
+
+                    loadingMonths.add(key);
+                    try {
+                        const res = await fetch(availabilityUrl, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                                'Accept': 'application/json'
+                            },
+                            body: JSON.stringify({ service_id: serviceId, month: m })
+                        });
+                        if (!res.ok) return;
+                        const data = await res.json();
+                        Object.assign(availability, data.days || {});
+                        availabilityLoaded[key] = true;
+                        dp.update({});
+                    } catch (e) {
+                        console.error('Availability error:', e);
+                    } finally {
+                        loadingMonths.delete(key);
+                    }
+                }
 
                 async function loadSlots() {
                     const serviceId = getSelectedService();
@@ -170,6 +351,7 @@
                         const data = await res.json();
 
                         if (!data.slots || data.slots.length === 0) {
+                            slotsEmpty.textContent = 'Нет свободного времени в этот день. Выберите другой.';
                             slotsEmpty.classList.remove('hidden');
                             return;
                         }

@@ -95,5 +95,6 @@ Route::middleware(['auth', 'role:client'])->prefix('me')->name('me.')->group(fun
 
     Route::get('/book/{master}', [ClientBookingController::class, 'show'])->name('book');
     Route::post('/book/{master}/slots', [ClientBookingController::class, 'slots'])->name('book.slots');
+    Route::post('/book/{master}/availability', [ClientBookingController::class, 'availability'])->name('book.availability');
     Route::post('/book/{master}', [ClientBookingController::class, 'book'])->name('book.store');
 });

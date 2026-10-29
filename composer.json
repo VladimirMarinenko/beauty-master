@@ -10,7 +10,8 @@
         "fakerphp/faker": "^1.24",
         "laravel/framework": "^12.0",
         "laravel/tinker": "^2.10.1",
-        "minishlink/web-push": "^11.0"
+        "minishlink/web-push": "^11.0",
+        "simplesoftwareio/simple-qrcode": "^4.2"
     },
     "require-dev": {
         "laravel/breeze": "^2.4",

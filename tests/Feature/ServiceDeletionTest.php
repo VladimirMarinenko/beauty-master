@@ -6,12 +6,10 @@ use App\Models\Appointment;
 use App\Models\Client;
 use App\Models\Service;
 use App\Models\User;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 class ServiceDeletionTest extends TestCase
 {
-    use RefreshDatabase;
 
     public function test_deleting_service_keeps_appointments(): void
     {
