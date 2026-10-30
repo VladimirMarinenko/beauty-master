@@ -408,7 +408,9 @@ class AppointmentController extends Controller
         $validated['total_price'] = $totals['price'];
         $validated['total_duration'] = $totals['duration'];
         $validated['start_time'] = Carbon::parse($validated['start_time']);
-        $validated['end_time'] = Carbon::parse($validated['end_time']);
+        // Конец интервала вычисляется из услуг/custom_duration, а не из формы.
+        // Тот же интервал используем для проверки пересечений и сохранения.
+        $validated['end_time'] = $validated['start_time']->copy()->addMinutes($totals['duration']);
 
         if (!empty($validated['appointment_id'])) {
             $appointment = Appointment::findOrFail($validated['appointment_id']);

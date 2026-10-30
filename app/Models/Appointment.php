@@ -51,12 +51,13 @@ class Appointment extends Model
                 $appointment->user_id = $appointment->master_id;
             }
 
-            // Автоподстановка client_user_id, если задан client_id
-            if (!$appointment->client_user_id && $appointment->client_id) {
-                $client = Client::find($appointment->client_id);
-                if ($client && $client->client_user_id) {
-                    $appointment->client_user_id = $client->client_user_id;
-                }
+            // Карточка — источник идентичности, а не только запасное значение.
+            // При переназначении/снятии карточки прежний клиент теряет доступ.
+            // Читаем БД напрямую: relation client может быть закэширован до смены ID.
+            if ($appointment->client_id || ($appointment->exists && $appointment->isDirty('client_id'))) {
+                $appointment->client_user_id = $appointment->client_id
+                    ? Client::whereKey($appointment->client_id)->value('client_user_id')
+                    : null;
             }
         });
     }
