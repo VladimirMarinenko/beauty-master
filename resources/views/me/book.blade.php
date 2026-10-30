@@ -127,7 +127,7 @@
                 const availabilityUrl = @json(route('me.book.availability', ['master' => $master->id]));
 
                 // JSON work_hours мастера: { "1": {...}, "6": null, "7": null }
-                const workHours = @json($master->work_hours ?? null);
+                const workHours = @json($master->effectiveWorkHours());
 
                 let selectedDate = null;
                 let selectedSlot = null;
@@ -137,6 +137,8 @@
                 // кэш загруженных месяцев: `${serviceId}:${YYYY-MM}` -> true
                 const availabilityLoaded = {};
                 const loadingMonths = new Set();
+                let availabilityVersion = 0;
+                let slotsRequestId = 0;
 
                 // ===== Хелперы =====
                 function formatDateKey(date) {
@@ -260,15 +262,19 @@
                         slotsEmpty.classList.add('hidden');
                         loadSlots();
                     },
-                    onShow({ view, month, year }) {
-                        if (view === 'days') loadAvailabilityAround(month, year);
+                    // Air Datepicker 3: onShow receives a boolean; month is zero-based.
+                    onShow(isFinished) {
+                        if (!isFinished) {
+                            loadAvailabilityAround(dp.viewDate.getMonth() + 1, dp.viewDate.getFullYear());
+                        }
                     },
-                    onMonthChange({ month, year }) { loadAvailabilityAround(month, year); },
-                    onYearChange({ month, year }) { loadAvailabilityAround(month, year); }
+                    onChangeViewDate({ month, year }) { loadAvailabilityAround(month + 1, year); }
                 });
 
                 serviceRadios.forEach(r => r.addEventListener('change', () => {
+                    availabilityVersion++;
                     availability = {};
+                    dp.update({});
                     for (const k in availabilityLoaded) delete availabilityLoaded[k];
                     if (dp.viewDate) {
                         loadAvailabilityAround(dp.viewDate.getMonth() + 1, dp.viewDate.getFullYear());
@@ -294,7 +300,8 @@
                     if (!serviceId) return;
 
                     const m   = `${year}-${String(month).padStart(2, '0')}`;
-                    const key = `${serviceId}:${m}`;
+                    const version = availabilityVersion;
+                    const key = `${version}:${serviceId}:${m}`;
                     if (availabilityLoaded[key] || loadingMonths.has(key)) return;
 
                     loadingMonths.add(key);
@@ -310,6 +317,8 @@
                         });
                         if (!res.ok) return;
                         const data = await res.json();
+                        // A response for a previously selected service must not recolor this calendar.
+                        if (version !== availabilityVersion || serviceId !== getSelectedService()) return;
                         Object.assign(availability, data.days || {});
                         availabilityLoaded[key] = true;
                         dp.update({});
@@ -321,6 +330,7 @@
                 }
 
                 async function loadSlots() {
+                    const requestId = ++slotsRequestId;
                     const serviceId = getSelectedService();
                     if (!serviceId || !selectedDate) {
                         slotsContainer.classList.add('hidden');
@@ -350,6 +360,7 @@
                         if (!res.ok) return;
                         const data = await res.json();
 
+                        if (requestId !== slotsRequestId) return;
                         if (!data.slots || data.slots.length === 0) {
                             slotsEmpty.textContent = 'Нет свободного времени в этот день. Выберите другой.';
                             slotsEmpty.classList.remove('hidden');

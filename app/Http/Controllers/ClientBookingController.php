@@ -62,6 +62,35 @@ class ClientBookingController extends Controller
         )]);
     }
 
+    public function availability(Request $request, User $master)
+    {
+        $client = Auth::user();
+
+        if (! $client->isClient() || $master->role !== User::ROLE_MASTER) {
+            return response()->json(['error' => 'Not found'], 404);
+        }
+
+        if (! $client->myClientCards()->where('master_id', $master->id)->exists()) {
+            return response()->json(['error' => 'Not attached'], 403);
+        }
+
+        $validated = $request->validate([
+            'service_id' => ['required', 'integer'],
+            'month' => ['required', 'date_format:Y-m', 'regex:/^(?!0000)[0-9]{4}-(0[1-9]|1[0-2])$/'],
+        ]);
+
+        $service = $master->services()->where('id', $validated['service_id'])->first();
+        if (! $service) {
+            return response()->json(['error' => 'Service not found'], 404);
+        }
+
+        return response()->json(['days' => app(BookingAvailability::class)->days(
+            $master,
+            Carbon::createFromFormat('!Y-m', $validated['month']),
+            (int) $service->duration
+        )]);
+    }
+
     public function book(Request $request, User $master)
     {
         return app(AppointmentWriteLock::class)->run($master->id, function () use ($request, $master) {
