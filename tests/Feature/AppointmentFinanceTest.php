@@ -197,6 +197,47 @@ class AppointmentFinanceTest extends TestCase
         $this->assertModelExists($other);
     }
 
+    #[DataProvider('updateEndpoints')]
+    public function test_completed_reschedule_updates_existing_income_date_only(string $endpoint): void
+    {
+        $this->travelTo(now()->setDate(2026, 11, 1)->startOfDay());
+        $appointment = $this->appointment();
+        $appointment->syncTransaction();
+        $income = Transaction::where('appointment_id', $appointment->id)->sole();
+        $manual = $this->transaction(null);
+        $manualBefore = $manual->fresh()->getAttributes();
+        $expense = $this->transaction($appointment, ['type' => 'expense']);
+        $expenseBefore = $expense->fresh()->getAttributes();
+        $other = $this->transaction($appointment, [
+            'user_id' => User::factory()->create(['role' => 'master'])->id,
+        ]);
+        $otherBefore = $other->fresh()->getAttributes();
+        $payload = array_merge($this->payload('completed'), [
+            'start_time' => '2026-11-09 14:00',
+            'end_time' => '2026-11-09 15:00',
+        ]);
+
+        $this->actingAs($this->master);
+        if ($endpoint === 'form') {
+            $this->put(route('appointments.update', $appointment), $payload)
+                ->assertRedirect(route('appointments.index'));
+        } else {
+            $this->postJson(route('appointments.sync'), array_merge(
+                $payload, ['appointment_id' => $appointment->id]
+            ))->assertOk()->assertJson(['success' => true]);
+        }
+
+        // Повторная синхронизация не создаёт новый доход.
+        $appointment->refresh()->syncTransaction();
+        $this->assertSame($income->id, $appointment->incomeTransactions()->sole()->id);
+        $this->assertSame('2026-11-09', $income->fresh()->transaction_date->format('Y-m-d'));
+        $this->assertEquals(1500, $income->fresh()->amount);
+        $this->assertDatabaseCount('transactions', 4);
+        $this->assertSame($manualBefore, $manual->fresh()->getAttributes());
+        $this->assertSame($expenseBefore, $expense->fresh()->getAttributes());
+        $this->assertSame($otherBefore, $other->fresh()->getAttributes());
+    }
+
     public function test_sync_creates_and_updates_single_income_before_deletion(): void
     {
         $this->actingAs($this->master)->postJson(route('appointments.sync'), $this->payload('completed'))

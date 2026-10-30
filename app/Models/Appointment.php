@@ -145,6 +145,7 @@ class Appointment extends Model
             } else {
                 $existing->update([
                     'amount' => $this->total_price,
+                    'transaction_date' => $this->start_time ?? now(),
                     'description' => 'Запись: ' . $this->client_name,
                 ]);
             }

@@ -7,6 +7,7 @@ use App\Models\Service;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Validator;
 
 class AppointmentController extends Controller
 {
@@ -241,9 +242,26 @@ class AppointmentController extends Controller
 
     public function checkOverlap(Request $request)
     {
-        $start = Carbon::parse($request->start_time);
-        $end = Carbon::parse($request->end_time);
-        $excludeId = $request->appointment_id ?? null;
+        // Проверяем start_time до after:start_time: иначе массив вместо даты
+        // может вызвать TypeError внутри Laravel. До валидации Carbon не вызываем.
+        $validator = Validator::make($request->all(), [
+            'start_time' => ['required', 'date_format:Y-m-d H:i'],
+            'end_time' => ['required', 'date_format:Y-m-d H:i', 'after:start_time'],
+            'appointment_id' => ['nullable', 'integer'],
+        ])->stopOnFirstFailure();
+
+        if ($validator->fails()) {
+            // JSON-эндпоинт: 422 также для fetch без заголовка Accept.
+            return response()->json([
+                'message' => 'Переданы некорректные данные.',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        $validated = $validator->validated();
+        $start = Carbon::parse($validated['start_time']);
+        $end = Carbon::parse($validated['end_time']);
+        $excludeId = $validated['appointment_id'] ?? null;
 
         $available = !$this->hasOverlap(Auth::id(), $start, $end, $excludeId);
 
