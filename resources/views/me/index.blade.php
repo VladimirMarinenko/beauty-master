@@ -46,14 +46,6 @@
             </p>
         </div>
 
-        <div class="grid grid-cols-4 gap-3 mb-4">
-            <a href="{{ route('me.appointments') }}" class="card p-4 text-center" style="text-decoration: none;">
-                <div class="text-2xl mb-1">📅</div>
-                <div class="text-sm font-semibold" style="color: var(--text);">Мои записи</div>
-                <div class="text-xs mt-1" style="color: var(--muted);">История и предстоящие</div>
-            </a>
-        </div>
-
         <h3 class="text-base font-semibold mb-3" style="color: var(--text);">Мои мастера</h3>
 
         @if($masterCards->isEmpty())

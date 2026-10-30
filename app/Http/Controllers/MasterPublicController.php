@@ -7,7 +7,6 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Validation\Rule;
 
 class MasterPublicController extends Controller
 {
@@ -53,14 +52,14 @@ class MasterPublicController extends Controller
                 ->with('error', 'Мастер не может привязаться к другому мастеру.');
         }
 
-        if (!$user->isClient()) {
+        if (! $user->isClient()) {
             abort(403);
         }
 
         $this->bindClientToMaster($user, $master);
 
         return redirect()->route('me.index')
-            ->with('success', 'Вы привязаны к мастеру ' . $master->name . '.');
+            ->with('success', 'Вы привязаны к мастеру '.$master->name.'.');
     }
 
     /**
@@ -88,14 +87,16 @@ class MasterPublicController extends Controller
                 function ($attribute, $value, $fail) {
                     $normalized = User::normalizePhone($value);
 
-                    if (!$normalized) {
+                    if (! $normalized) {
                         $fail('Введите корректный номер телефона.');
+
                         return;
                     }
 
                     $digits = preg_replace('/\D+/', '', $normalized);
                     if (strlen($digits) < 10 || strlen($digits) > 15) {
                         $fail('Введите корректный номер телефона.');
+
                         return;
                     }
 
@@ -133,7 +134,7 @@ class MasterPublicController extends Controller
         });
 
         return redirect()->route('me.index')
-            ->with('success', 'Добро пожаловать, ' . $user->name . '! Вы привязаны к мастеру ' . $master->name . '.');
+            ->with('success', 'Добро пожаловать, '.$user->name.'! Вы привязаны к мастеру '.$master->name.'.');
     }
 
     /**
@@ -144,67 +145,22 @@ class MasterPublicController extends Controller
      */
     private function bindClientToMaster(User $user, User $master): Client
     {
-        // Уже привязан?
-        $existing = $user->myClientCards()
-            ->where('master_id', $master->id)
-            ->first();
-
+        // Never infer ownership from a phone number supplied during registration.
+        // An invitation URL and an unverified phone do not prove identity. Existing
+        // client cards are attached only through an explicit master-side action.
+        $existing = $user->myClientCards()->where('master_id', $master->id)->first();
         if ($existing) {
             return $existing;
         }
 
-        // Ищем карточку у мастера по телефону (свободную, без client_user_id)
-        $card = null;
-
-        if ($user->phone_normalized) {
-            $variants = self::phoneVariants($user->phone_normalized);
-
-            // Сначала точное совпадение
-            $card = Client::where('master_id', $master->id)
-                ->whereNull('client_user_id')
-                ->whereIn('phone_normalized', $variants)
-                ->first();
-
-            // Потом частичное (на случай, если в карточке телефон записан с другим форматом)
-            if (!$card) {
-                $card = Client::where('master_id', $master->id)
-                    ->whereNull('client_user_id')
-                    ->where(function ($q) use ($variants) {
-                        foreach ($variants as $v) {
-                            $q->orWhere('phone_normalized', 'like', "%{$v}%");
-                        }
-                    })
-                    ->orderBy('id')
-                    ->first();
-            }
-        }
-
-        return DB::transaction(function () use ($card, $user, $master) {
-            if ($card) {
-                // Привязываемся к существующей. Имя карточки НЕ меняем.
-                $card->client_user_id = $user->id;
-
-                if (empty($card->phone) && $user->phone) {
-                    $card->phone = $user->phone;
-                }
-                if (empty($card->contact) && $user->email) {
-                    $card->contact = $user->email;
-                }
-                $card->save();
-
-                return $card;
-            }
-
-            // Создаём новую карточку у мастера
-            return Client::create([
-                'master_id' => $master->id,
-                'client_user_id' => $user->id,
-                'name' => $user->name,
-                'phone' => $user->phone,
-                'contact' => $user->email,
-                'is_permanent' => false,
-            ]);
-        });
+        return Client::create([
+            'master_id' => $master->id,
+            'client_user_id' => $user->id,
+            'name' => $user->name,
+            'phone' => $user->phone,
+            'contact' => $user->email,
+            'is_permanent' => false,
+        ]);
     }
 
     /**
@@ -218,11 +174,12 @@ class MasterPublicController extends Controller
         $variants = [$digits];
         if (strlen($digits) >= 2) {
             if ($digits[0] === '8') {
-                $variants[] = '7' . substr($digits, 1);
+                $variants[] = '7'.substr($digits, 1);
             } elseif ($digits[0] === '7') {
-                $variants[] = '8' . substr($digits, 1);
+                $variants[] = '8'.substr($digits, 1);
             }
         }
+
         return array_values(array_unique($variants));
     }
 }

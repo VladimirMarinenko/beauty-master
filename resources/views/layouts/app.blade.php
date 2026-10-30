@@ -140,6 +140,41 @@
         }
         .nav-item:hover { color: var(--primary); }
 
+        /* Клиент: два равных пункта, без разделов кабинета мастера. */
+        .client-bottom-nav__items {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            max-width: 520px;
+            min-height: 64px;
+            margin: 0 auto;
+            padding: 4px max(12px, env(safe-area-inset-right)) 4px max(12px, env(safe-area-inset-left));
+        }
+        .client-bottom-nav .nav-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            min-width: 0;
+            min-height: 48px;
+            margin: 0 4px;
+            padding: 8px;
+            font-size: 12px;
+            font-weight: 600;
+            line-height: 1.25;
+            text-align: center;
+            text-decoration: none;
+        }
+        .client-bottom-nav .nav-item:focus-visible {
+            outline: 2px solid var(--primary);
+            outline-offset: -2px;
+        }
+        .client-bottom-nav svg {
+            width: 24px;
+            height: 24px;
+            flex-shrink: 0;
+        }
+
         .push-button {
             position: fixed;
             top: 12px;
@@ -245,46 +280,52 @@
     </button>
     <span id="push-status" class="push-status"></span>
 
-    <nav class="bottom-nav fixed bottom-0 left-0 right-0 z-50">
-        <div class="grid grid-cols-5 h-16">
-            <a href="{{ route('appointments.index') }}"
-               class="nav-item flex flex-col items-center justify-center {{ request()->routeIs('appointments.*') ? 'active' : '' }}">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                </svg>
-                <span class="text-xs mt-1">Календарь</span>
-            </a>
-            <a href="{{ route('transactions.index') }}"
-               class="nav-item flex flex-col items-center justify-center {{ request()->routeIs('transactions.*') ? 'active' : '' }}">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <span class="text-xs mt-1">Финансы</span>
-            </a>
-            <a href="{{ route('services.index') }}"
-               class="nav-item flex flex-col items-center justify-center {{ request()->routeIs('services.*') ? 'active' : '' }}">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-                <span class="text-xs mt-1">Услуги</span>
-            </a>
-            <a href="{{ route('clients.index') }}"
-               class="nav-item flex flex-col items-center justify-center {{ request()->routeIs('clients.*') ? 'active' : '' }}">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                </svg>
-                <span class="text-xs mt-1">Клиенты</span>
-            </a>
-            <a href="{{ route('profile.edit') }}"
-               class="nav-item flex flex-col items-center justify-center {{ request()->routeIs('profile.*') ? 'active' : '' }}">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                </svg>
-                <span class="text-xs mt-1">Профиль</span>
-            </a>
-        </div>
-    </nav>
+    @auth
+        @if(auth()->user()->isClient())
+            @include('layouts.partials.client-bottom-nav')
+        @elseif(auth()->user()->isMaster())
+            <nav class="bottom-nav fixed bottom-0 left-0 right-0 z-50">
+                <div class="grid grid-cols-5 h-16">
+                    <a href="{{ route('appointments.index') }}"
+                       class="nav-item flex flex-col items-center justify-center {{ request()->routeIs('appointments.*') ? 'active' : '' }}">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                        <span class="text-xs mt-1">Календарь</span>
+                    </a>
+                    <a href="{{ route('transactions.index') }}"
+                       class="nav-item flex flex-col items-center justify-center {{ request()->routeIs('transactions.*') ? 'active' : '' }}">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <span class="text-xs mt-1">Финансы</span>
+                    </a>
+                    <a href="{{ route('services.index') }}"
+                       class="nav-item flex flex-col items-center justify-center {{ request()->routeIs('services.*') ? 'active' : '' }}">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                        <span class="text-xs mt-1">Услуги</span>
+                    </a>
+                    <a href="{{ route('clients.index') }}"
+                       class="nav-item flex flex-col items-center justify-center {{ request()->routeIs('clients.*') ? 'active' : '' }}">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                        </svg>
+                        <span class="text-xs mt-1">Клиенты</span>
+                    </a>
+                    <a href="{{ route('profile.edit') }}"
+                       class="nav-item flex flex-col items-center justify-center {{ request()->routeIs('profile.*') ? 'active' : '' }}">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                        </svg>
+                        <span class="text-xs mt-1">Профиль</span>
+                    </a>
+                </div>
+            </nav>
+        @endif
+    @endauth
 </div>
 
 <script>

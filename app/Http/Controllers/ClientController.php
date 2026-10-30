@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Appointment;
 use App\Models\Client;
+use App\Services\AppointmentWriteLock;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -82,7 +84,7 @@ class ClientController extends Controller
                 'phone2' => $c->phone2,
                 'contact' => $c->contact,
                 'is_permanent' => (bool) $c->is_permanent,
-                'service_ids' => $c->services->pluck('id')->map(fn($id) => (int) $id)->values()->all(),
+                'service_ids' => $c->services->pluck('id')->map(fn ($id) => (int) $id)->values()->all(),
             ];
         }));
     }
@@ -90,6 +92,7 @@ class ClientController extends Controller
     public function create()
     {
         $services = Auth::user()->services()->orderBy('name')->get();
+
         return view('clients.create', compact('services'));
     }
 
@@ -115,7 +118,7 @@ class ClientController extends Controller
             'is_permanent' => $isPermanent,
         ]);
 
-        if ($isPermanent && !empty($validated['service_ids'])) {
+        if ($isPermanent && ! empty($validated['service_ids'])) {
             $allowedIds = Auth::user()->services()
                 ->whereIn('id', $validated['service_ids'])
                 ->pluck('id')
@@ -161,7 +164,7 @@ class ClientController extends Controller
             'is_permanent' => $isPermanent,
         ]);
 
-        if ($isPermanent && !empty($validated['service_ids'])) {
+        if ($isPermanent && ! empty($validated['service_ids'])) {
             $allowedIds = Auth::user()->services()
                 ->whereIn('id', $validated['service_ids'])
                 ->pluck('id')
@@ -204,6 +207,7 @@ class ClientController extends Controller
         $search = (string) $request->input('search', '');
         $search = preg_replace('/[\p{Z}\s]+/u', ' ', $search);
         $search = trim($search);
+
         return mb_substr($search, 0, 100);
     }
 
@@ -244,6 +248,7 @@ class ClientController extends Controller
             return null;
         }
         $normalized = Client::normalizePhone($phone);
+
         return $normalized ? trim($phone) : null;
     }
 
@@ -261,11 +266,20 @@ class ClientController extends Controller
 
     public function merge(Request $request, Client $client)
     {
+        return app(AppointmentWriteLock::class)->run(Auth::id(), function () use ($request, $client) {
+            $client->refresh();
+
+            return $this->mergeLocked($request, $client);
+        });
+    }
+
+    private function mergeLocked(Request $request, Client $client)
+    {
         $this->authorizeClient($client);
 
         $validated = $request->validate([
             'merge_with_id' => 'required|integer|exists:clients,id',
-            'keep_id'       => 'required|integer',
+            'keep_id' => 'required|integer',
         ]);
 
         $other = Client::findOrFail($validated['merge_with_id']);
@@ -279,7 +293,7 @@ class ClientController extends Controller
         $clientId = (int) $client->id;
         $otherId = (int) $other->id;
 
-        if (!in_array($keepId, [$clientId, $otherId], true)) {
+        if (! in_array($keepId, [$clientId, $otherId], true)) {
             return back()->withErrors(['keep_id' => 'Некорректный выбор основной карточки.']);
         }
 
@@ -288,6 +302,10 @@ class ClientController extends Controller
 
         if ((int) $keep->id === (int) $drop->id) {
             return back()->withErrors(['merge_with_id' => 'Карточки совпадают — нечего сливать.']);
+        }
+
+        if ($keep->client_user_id && $drop->client_user_id && (int) $keep->client_user_id !== (int) $drop->client_user_id) {
+            return back()->withErrors(['merge_with_id' => 'Нельзя объединять карточки разных аккаунтов клиентов.']);
         }
 
         $lostPhonesCount = 0;
@@ -309,18 +327,18 @@ class ClientController extends Controller
                          $this->cleanPhone($keep->phone2),
                          $this->cleanPhone($drop->phone2),
                      ] as $p) {
-                if ($p !== null && !in_array($p, $allPhones, true)) {
+                if ($p !== null && ! in_array($p, $allPhones, true)) {
                     $allPhones[] = $p;
                 }
             }
 
-            $keep->phone  = $allPhones[0] ?? null;
+            $keep->phone = $allPhones[0] ?? null;
             $keep->phone2 = $allPhones[1] ?? null;
             $lostPhonesCount = max(0, count($allPhones) - 2);
 
             // 2. Объединяем contact через "; "
             $contacts = collect([$keep->contact, $drop->contact])
-                ->map(fn($c) => $c ? trim((string) $c) : null)
+                ->map(fn ($c) => $c ? trim((string) $c) : null)
                 ->filter()
                 ->unique()
                 ->values();
@@ -331,7 +349,7 @@ class ClientController extends Controller
             // 2.1. client_user_id: если у главной нет, но у удаляемой есть — переносим.
             //      Должно быть ДО блока notified_at, иначе notified_at не выставится
             //      после переноса client_user_id.
-            if (!$keep->client_user_id && $drop->client_user_id) {
+            if (! $keep->client_user_id && $drop->client_user_id) {
                 $keep->client_user_id = $drop->client_user_id;
             }
 
@@ -349,17 +367,17 @@ class ClientController extends Controller
 
             // 5. Перепривязка записей ДО удаления.
             //    client_user_id берём из $keep (уже с перенесённым значением).
-            \App\Models\Appointment::where('client_id', $drop->id)
+            Appointment::where('client_id', $drop->id)
                 ->update([
-                    'client_id'      => $keep->id,
+                    'client_id' => $keep->id,
                     'client_user_id' => $keep->client_user_id,
                 ]);
 
             // 6. Объединение услуг
             $keepServiceIds = $keep->services()->pluck('services.id')->toArray();
             $dropServiceIds = $drop->services()->pluck('services.id')->toArray();
-            $allServiceIds  = array_values(array_unique(array_merge($keepServiceIds, $dropServiceIds)));
-            if (!empty($allServiceIds)) {
+            $allServiceIds = array_values(array_unique(array_merge($keepServiceIds, $dropServiceIds)));
+            if (! empty($allServiceIds)) {
                 $keep->services()->sync($allServiceIds);
             }
 
@@ -368,10 +386,10 @@ class ClientController extends Controller
             $drop->delete();
         });
 
-        $message = 'Клиенты объединены. Осталась карточка «' . $keep->name . '».';
+        $message = 'Клиенты объединены. Осталась карточка «'.$keep->name.'».';
 
         if ($lostPhonesCount > 0) {
-            $message .= ' Внимание: было ' . ($lostPhonesCount + 2) . ' телефонов, сохранились только 2 (основной + дополнительный). Проверьте карточку вручную.';
+            $message .= ' Внимание: было '.($lostPhonesCount + 2).' телефонов, сохранились только 2 (основной + дополнительный). Проверьте карточку вручную.';
         }
 
         if ($contactsCount > 1) {

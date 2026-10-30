@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\AppointmentWriteLock;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
@@ -26,6 +27,14 @@ class AttendanceController extends Controller
     }
 
     public function process(Request $request)
+    {
+        return app(AppointmentWriteLock::class)->run(Auth::id(), function () use ($request) {
+
+            return $this->processLocked($request);
+        });
+    }
+
+    private function processLocked(Request $request)
     {
         $action = $request->input('action');
         $appointmentIds = $request->input('appointment_ids', []);

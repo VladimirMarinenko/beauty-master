@@ -4,10 +4,12 @@ namespace Tests\Feature;
 
 use App\Models\Client;
 use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 class ClientRegistrationTest extends TestCase
 {
+    use RefreshDatabase;
 
     private function createMaster(array $overrides = []): User
     {
@@ -62,7 +64,7 @@ class ClientRegistrationTest extends TestCase
         ]);
     }
 
-    public function test_registration_attaches_to_existing_card_by_phone(): void
+    public function test_registration_does_not_claim_existing_card_by_unverified_phone(): void
     {
         $master = $this->createMaster();
 
@@ -77,16 +79,12 @@ class ClientRegistrationTest extends TestCase
 
         $this->post($this->registerUrl(), $this->validPayload());
 
-        // Новая карточка не создана, привязка — к существующей
-        $this->assertDatabaseCount('clients', 1);
-
-        $card->refresh();
-        $this->assertNotNull($card->client_user_id);
-        // Имя карточки осталось «Вова» (мастер видит так)
-        $this->assertSame('Вова', $card->name);
+        // Unverified phone cannot prove ownership of the master's existing customer record.
+        $this->assertDatabaseCount('clients', 2);
+        $this->assertNull($card->fresh()->client_user_id);
     }
 
-    public function test_registration_attaches_by_alternate_phone_format(): void
+    public function test_registration_does_not_claim_card_by_alternate_phone_format(): void
     {
         $master = $this->createMaster();
 
@@ -101,7 +99,8 @@ class ClientRegistrationTest extends TestCase
 
         $this->post($this->registerUrl(), $this->validPayload());
 
-        $this->assertDatabaseCount('clients', 1);
+        $this->assertDatabaseCount('clients', 2);
+        $this->assertNull(Client::where('name', 'Вова')->first()->client_user_id);
     }
 
     // ===== Ошибки =====

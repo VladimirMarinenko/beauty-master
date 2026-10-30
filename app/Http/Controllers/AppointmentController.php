@@ -4,7 +4,6 @@ namespace App\Http\Controllers;
 
 use App\Models\Appointment;
 use App\Models\Service;
-use App\Models\Transaction;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -134,7 +133,7 @@ class AppointmentController extends Controller
         }
 
         $appointment = Appointment::create($validated);
-        $this->syncTransaction($appointment);
+        $appointment->syncTransaction();
 
         return redirect()->route('appointments.index')
             ->with('success', 'Запись добавлена!');
@@ -209,7 +208,7 @@ class AppointmentController extends Controller
         }
 
         $appointment->update($validated);
-        $this->syncTransaction($appointment);
+        $appointment->syncTransaction();
 
         return redirect()->route('appointments.index')
             ->with('success', 'Запись обновлена!');
@@ -404,7 +403,7 @@ class AppointmentController extends Controller
             }
 
             $appointment->update($validated);
-            $this->syncTransaction($appointment);
+            $appointment->syncTransaction();
 
             return response()->json(['success' => true]);
         }
@@ -416,38 +415,9 @@ class AppointmentController extends Controller
         }
 
         $appointment = Appointment::create($validated);
-        $this->syncTransaction($appointment);
+        $appointment->syncTransaction();
 
         return response()->json(['success' => true]);
-    }
-
-    private function syncTransaction(Appointment $appointment): void
-    {
-        $existingTransaction = Transaction::where('appointment_id', $appointment->id)
-            ->where('type', 'income')
-            ->first();
-
-        if ($appointment->status === 'completed') {
-            if (!$existingTransaction) {
-                $appointment->user->transactions()->create([
-                    'type' => 'income',
-                    'amount' => $appointment->total_price,
-                    'transaction_date' => $appointment->start_time ?? now(),
-                    'category' => 'Доход от услуги',
-                    'description' => 'Запись: ' . $appointment->client_name,
-                    'appointment_id' => $appointment->id,
-                ]);
-            } else {
-                $existingTransaction->update([
-                    'amount' => $appointment->total_price,
-                    'description' => 'Запись: ' . $appointment->client_name,
-                ]);
-            }
-        } else {
-            if ($existingTransaction) {
-                $existingTransaction->delete();
-            }
-        }
     }
 
     private function calculateTotals($services, int $customDuration, bool $isFixed): array

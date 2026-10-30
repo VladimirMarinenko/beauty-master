@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Appointment extends Model
 {
@@ -97,15 +98,31 @@ class Appointment extends Model
         return $this->master();
     }
 
+    /** Доходы именно этой записи и её мастера; ручные операции без связи не затрагиваются. */
+    public function incomeTransactions(): HasMany
+    {
+        return $this->hasMany(Transaction::class)
+            ->where('type', 'income')
+            ->where('user_id', $this->master_id ?: $this->user_id);
+    }
+
+    protected function performDeleteOnModel()
+    {
+        // Сначала удаляем доходы, пока FK appointment_id ещё не обнулён.
+        // При ошибке любого DELETE откатываем обе операции.
+        $this->getConnection()->transaction(function () {
+            $this->incomeTransactions()->delete();
+            parent::performDeleteOnModel();
+        });
+    }
+
     // =========================
     // Синхронизация транзакции
     // =========================
 
     public function syncTransaction(): void
     {
-        $existing = Transaction::where('appointment_id', $this->id)
-            ->where('type', 'income')
-            ->first();
+        $existing = $this->incomeTransactions()->first();
 
         if ($this->status === 'completed') {
             // Транзакция принадлежит мастеру (user_id в transactions)
@@ -132,9 +149,8 @@ class Appointment extends Model
                 ]);
             }
         } else {
-            if ($existing) {
-                $existing->delete();
-            }
+            // Убираем также возможные дубли старого дохода при отмене/смене статуса.
+            $this->incomeTransactions()->delete();
         }
     }
 }
