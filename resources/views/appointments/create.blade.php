@@ -2,7 +2,14 @@
     <x-slot name="header">
         <div class="flex items-center justify-between">
             <h2 class="page-title">{{ __('Добавить запись') }}</h2>
-            <a href="{{ url()->previous() }}" class="text-gray-500 hover:text-gray-700">← Назад</a>
+            @php
+                $returnParams = \App\Support\AppointmentCalendarContext::forCreate(
+                    request()->query('return_date'),
+                    request()->query('return_view'),
+                    $start ?? null
+                );
+            @endphp
+            <a href="{{ route('appointments.index', $returnParams) }}" class="text-gray-500 hover:text-gray-700">← Назад</a>
         </div>
     </x-slot>
 
@@ -101,7 +108,7 @@
                                                class="service-checkbox h-5 w-5 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500"
                                                data-price="{{ $service->price }}"
                                                data-duration="{{ $service->duration }}"
-                                            {{ (is_array(old('services')) && in_array($service->id, old('services'))) ? 'checked' : '' }}>
+                                                {{ (is_array(old('services')) && in_array($service->id, old('services'))) ? 'checked' : '' }}>
                                         <span class="flex-1">
                                             <span class="font-medium">{{ $service->name }}</span>
                                             <span class="text-sm text-gray-600 block">{{ number_format($service->price, 2) }} ₽ · {{ $service->duration }} мин</span>
@@ -156,7 +163,7 @@
                     <label class="flex items-center cursor-pointer">
                         <input type="checkbox" id="dense_mode" name="dense_mode"
                                class="h-5 w-5 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500"
-                            {{ old('dense_mode') ? 'checked' : '' }}>
+                                {{ old('dense_mode') ? 'checked' : '' }}>
                         <span class="ml-3 text-sm font-medium text-gray-700">Плотная запись (15 мин между клиентами)</span>
                     </label>
                 </div>
@@ -165,7 +172,7 @@
                     <label class="flex items-center cursor-pointer">
                         <input type="checkbox" id="custom_duration_toggle" name="custom_duration_toggle"
                                class="h-5 w-5 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500"
-                            {{ old('custom_duration_toggle') ? 'checked' : '' }}>
+                                {{ old('custom_duration_toggle') ? 'checked' : '' }}>
                         <span class="ml-3 text-sm font-medium text-gray-700">Своя длительность</span>
                     </label>
                 </div>
@@ -179,7 +186,7 @@
                         <label class="flex items-center cursor-pointer">
                             <input type="checkbox" id="is_fixed_price" name="is_fixed_price" value="1"
                                    class="h-5 w-5 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500"
-                                {{ old('is_fixed_price', true) ? 'checked' : '' }}>
+                                    {{ old('is_fixed_price', true) ? 'checked' : '' }}>
                             <span class="ml-3 text-sm font-medium text-gray-700">Фиксированная стоимость</span>
                         </label>
                         <p class="text-xs text-gray-500 mt-1 ml-8">
@@ -647,7 +654,7 @@
                             body: JSON.stringify(data)
                         });
                         if (response.ok) {
-                            window.location.href = '{{ route('appointments.index') }}';
+                            window.location.href = @json(route('appointments.index', $returnParams));
                         } else {
                             const err = await response.json();
                             if (err.errors) alert(Object.values(err.errors).flat().join('\n'));
@@ -663,7 +670,7 @@
                         tx.objectStore('pendingAppointments').add(data);
                         await tx.complete;
                         alert('Нет интернета. Запись сохранена локально.');
-                        window.location.href = '{{ route('appointments.index') }}';
+                        window.location.href = @json(route('appointments.index', $returnParams));
                     } catch (error) { alert('Не удалось сохранить запись офлайн.'); }
                 }
 

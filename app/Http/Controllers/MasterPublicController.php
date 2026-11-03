@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Client;
 use App\Models\User;
+use App\Support\AlphabeticalOrder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -20,7 +21,7 @@ class MasterPublicController extends Controller
             ->where('invite_token', $token)
             ->firstOrFail();
 
-        $services = $master->services()->orderBy('name')->get();
+        $services = AlphabeticalOrder::byName($master->services()->get());
 
         $loggedUser = auth()->user();
         $alreadyAttached = false;

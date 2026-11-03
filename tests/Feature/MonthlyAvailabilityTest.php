@@ -126,14 +126,64 @@ class MonthlyAvailabilityTest extends TestCase
         $this->monthly()->assertJsonPath('days.2026-11-02.available', false);
     }
 
-    public function test_null_or_empty_legacy_work_hours_use_shared_defaults(): void
+    public static function legacyWorkHours(): array
     {
-        foreach ([null, []] as $hours) {
-            $this->master->update(['work_hours' => $hours]);
-            $this->monthly()->assertOk()->assertJsonPath('days.2026-11-01.available', true);
+        return ['null' => [null], 'empty array' => [[]]];
+    }
+
+    #[DataProvider('legacyWorkHours')]
+    public function test_null_or_empty_legacy_work_hours_use_shared_defaults(?array $hours): void
+    {
+        // A future Sunday exercises the legacy default on weekends too, including 06:00.
+        $this->travelTo(now()->setDate(2026, 10, 31)->setTime(8, 0));
+        $this->master->update(['work_hours' => $hours]);
+
+        // The calendar consumes inline workHours before consulting monthly availability.
+        // Decode the actual JSON instead of depending on its whitespace/serialization.
+        $page = $this->actingAs($this->client)->get(route('me.book', $this->master))->assertOk();
+        $this->assertSame(1, preg_match('/const\s+workHours\s*=\s*(\{.*?\}|\[.*?\]|null)\s*;/s', $page->getContent(), $match),
+            'Booking page must expose workHours JSON to the calendar. Install the matching book.blade.php and clear compiled views.');
+        $expectedDay = ['start' => '06:00', 'end' => '22:00', 'break_start' => null, 'break_end' => null];
+        $this->assertSame(array_fill(1, 7, $expectedDay), json_decode($match[1], true, 512, JSON_THROW_ON_ERROR));
+
+        $days = $this->monthly()->assertOk()->json('days');
+        $this->assertCount(30, $days);
+        foreach ($days as $info) {
+            $this->assertSame(['available' => true, 'reason' => null], $info);
         }
-        $this->actingAs($this->client)->get(route('me.book', $this->master))->assertOk()
-            ->assertSee('"start":"06:00"', false);
+
+        // Independently expect the complete 30-minute grid for a 60-minute service.
+        $expectedSlots = [];
+        for ($minutes = 6 * 60; $minutes <= 21 * 60; $minutes += 30) {
+            $time = sprintf('%02d:%02d', intdiv($minutes, 60), $minutes % 60);
+            $end = $minutes + 60;
+            $expectedSlots[] = [
+                'start' => '2026-11-01 '.$time,
+                'end' => '2026-11-01 '.sprintf('%02d:%02d', intdiv($end, 60), $end % 60),
+                'time' => $time,
+            ];
+        }
+        $this->postJson(route('me.book.slots', $this->master), [
+            'service_id' => $this->service->id, 'date' => '2026-11-01',
+        ])->assertOk()->assertExactJson(['slots' => $expectedSlots]);
+
+        // Booking enforces the same boundaries, not merely a nonempty month response.
+        foreach (['05:30', '21:30'] as $time) {
+            $this->post(route('me.book.store', $this->master), [
+                'service_id' => $this->service->id, 'start_time' => '2026-11-01 '.$time,
+            ])->assertSessionHasErrors('start_time');
+        }
+        $this->assertDatabaseCount('appointments', 0);
+        foreach (['06:00' => '07:00', '21:00' => '22:00'] as $start => $end) {
+            $this->post(route('me.book.store', $this->master), [
+                'service_id' => $this->service->id, 'start_time' => '2026-11-01 '.$start,
+            ])->assertRedirect()->assertSessionHas('success');
+            $this->assertDatabaseHas('appointments', [
+                'master_id' => $this->master->id, 'service_id' => $this->service->id,
+                'start_time' => '2026-11-01 '.$start.':00', 'end_time' => '2026-11-01 '.$end.':00',
+            ]);
+        }
+        $this->assertDatabaseCount('appointments', 2);
     }
 
     public function test_duration_breaks_and_step_are_the_same_as_booking(): void

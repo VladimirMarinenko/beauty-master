@@ -8,7 +8,7 @@
     <div class="py-4 px-3">
         <div class="bg-white shadow-sm rounded-lg overflow-hidden">
             <div class="p-3">
-                <a href="{{ route('appointments.create') }}"
+                <a id="new-appointment-link" href="{{ route('appointments.create') }}"
                    class="block w-full text-center px-4 py-3 bg-indigo-600 rounded-md font-semibold text-sm text-white uppercase tracking-wider hover:bg-indigo-700 active:bg-indigo-800 mb-3">
                     + Новая запись
                 </a>
@@ -17,12 +17,20 @@
                     <div class="mb-3 text-green-600 text-sm">{{ session('success') }}</div>
                 @endif
 
-                <div id="calendar"></div>
+                @php
+                    $calendarContext = \App\Support\AppointmentCalendarContext::forIndex(request()->query('date'), request()->query('view'));
+                @endphp
+                <div id="calendar" data-initial-date="{{ $calendarContext['date'] ?? '' }}" data-initial-view="{{ $calendarContext['view'] ?? '' }}"></div>
             </div>
         </div>
     </div>
 
     <script src="{{ asset('vendor/fullcalendar/index.global.min.js') }}"></script>
+    {{-- Content-addressed URLs are essential: the PWA and HTTP cache keep JS
+         cache-first/immutable. Never reuse a URL when a helper's API changes.
+         Keep these classic scripts blocking and before the initializer below. --}}
+    <script src="{{ asset('js/calendar-month-swipe.v1.js') }}?v={{ hash_file('sha256', public_path('js/calendar-month-swipe.v1.js')) }}"></script>
+    <script src="{{ asset('js/appointment-calendar.v1.js') }}?v={{ hash_file('sha256', public_path('js/appointment-calendar.v1.js')) }}"></script>
     <style>
         #calendar { font-family: 'Figtree', sans-serif; }
 
@@ -228,12 +236,57 @@
     <script>
         document.addEventListener('DOMContentLoaded', function () {
             var calendarEl = document.getElementById('calendar');
+            var historyKey = 'beautyMasterCalendar';
+            var entryState = window.history.state && window.history.state[historyKey];
+            if (!window.validCalendarContext(entryState)) entryState = null;
+            var initialDate = calendarEl.getAttribute('data-initial-date');
+            var initialView = calendarEl.getAttribute('data-initial-view');
+            // Explicit return URLs win over history left by an older script.
+            // datesSet keeps that URL current, so reloads still restore UI changes.
+            if (entryState && ((initialDate && entryState.date !== initialDate)
+                || (initialView && entryState.view !== initialView))) entryState = null;
+            var returnContext = entryState && window.validCalendarContext(entryState.returnContext)
+                ? entryState.returnContext : null;
+            var selectionGuard = window.createCalendarSelectionGuard();
             var calendar = new FullCalendar.Calendar(calendarEl, {
-                initialView: 'listWeek',
+                initialView: initialView || (entryState ? entryState.view : 'listWeek'),
+                initialDate: initialDate || (entryState ? entryState.date : undefined),
                 locale: 'ru',
                 firstDay: 1,
                 height: 'auto',
                 selectable: true,
+                selectAllow: function(selection) {
+                    return calendar.view.type !== 'dayGridMonth' && !selectionGuard.isSuppressed();
+                },
+                datesSet: function(info) {
+                    // Store the current view/date in this browser-history entry. A month
+                    // click creates a separate day entry, so Back restores the exact month.
+                    // The form's HTML Back link returns to the view that opens it,
+                    // not the month visited before this day. Refresh on every date
+                    // change too (day arrows/swipes and restored legacy history).
+                    // Browser Back still uses the separate entries below.
+                    returnContext = {
+                        view: info.view.type,
+                        date: window.buildCalendarLocalDate(info.view.calendar.getDate())
+                    };
+                    var createLink = document.getElementById('new-appointment-link');
+                    if (createLink) createLink.href = window.appendCalendarReturnContext('/appointments/create', returnContext);
+                    var state = Object.assign({}, window.history.state || {});
+                    state[historyKey] = {
+                        returnContext: returnContext,
+                        view: info.view.type,
+                        date: window.buildCalendarLocalDate(info.view.calendar.getDate()),
+                        scrollX: window.scrollX || 0,
+                        scrollY: window.scrollY || 0
+                    };
+                    var url = new URL(window.location.href, window.location.origin);
+                    url.searchParams.set('date', state[historyKey].date);
+                    url.searchParams.set('view', state[historyKey].view);
+                    window.history.replaceState(state, '', url.href);
+                    // FullCalendar otherwise carries a date selection into the
+                    // newly-rendered month/day, so a later tap can reuse stale dates.
+                    window.clearCalendarSelection(calendar);
+                },
                 selectMirror: true,
                 dayMaxEvents: 12,
                 nowIndicator: true,
@@ -256,8 +309,8 @@
                     timeGridDay: {
                         slotMinTime: '08:00:00',
                         slotMaxTime: '22:00:00',
-                        slotDuration: '00:15:00',
-                        snapDuration: '00:05:00',
+                        slotDuration: '00:30:00',
+                        snapDuration: '00:30:00',
                         allDaySlot: false,
                         nowIndicator: true
                     }
@@ -278,22 +331,51 @@
                 },
 
                 dateClick: function(info) {
+                    if (selectionGuard.isSuppressed()) return;
                     if (info.view.type === 'dayGridMonth') {
+                        // Capture the month entry's latest scroll offset before
+                        // pushing the day entry; the browser can't infer it later.
+                        var monthState = Object.assign({}, window.history.state || {});
+                        monthState[historyKey] = {
+                            view: 'dayGridMonth',
+                            date: window.buildCalendarLocalDate(calendar.getDate()),
+                            scrollX: window.scrollX || 0,
+                            scrollY: window.scrollY || 0
+                        };
+                        window.history.replaceState(monthState, '', window.location.href);
+                        returnContext = {
+                            view: 'dayGridMonth',
+                            date: window.buildCalendarLocalDate(calendar.getDate())
+                        };
+                        var state = Object.assign({}, monthState);
+                        state[historyKey] = {
+                            returnContext: returnContext,
+                            view: 'timeGridDay',
+                            date: info.dateStr.slice(0, 10),
+                            scrollX: window.scrollX || 0,
+                            scrollY: window.scrollY || 0
+                        };
+                        window.history.pushState(state, '', window.location.href);
                         calendar.changeView('timeGridDay', info.dateStr);
+                        return;
+                    }
+
+                    // Empty time-grid slots open the form for the tapped time.
+                    // The day view uses 30-minute slots; appointment duration can
+                    // be changed in the form after choosing a service.
+                    if (info.view.type === 'timeGridDay') {
+                        window.location.href = window.buildAppointmentCreateUrlForSlot(info.date, 30, returnContext);
                     }
                 },
 
                 select: function(info) {
-                    if (info.view.type !== 'timeGridDay') return;
+                    if (info.view.type !== 'timeGridDay' || selectionGuard.isSuppressed()) return;
 
-                    var start = info.startStr.slice(0, 16);
-                    var end = info.endStr.slice(0, 16);
-
-                    window.location.href = '/appointments/create?start=' +
-                        encodeURIComponent(start) + '&end=' + encodeURIComponent(end);
+                    window.location.href = window.buildAppointmentCreateUrl(info.startStr, info.endStr, returnContext);
                 },
 
                 eventClick: function(info) {
+                    if (selectionGuard.isSuppressed()) return;
                     if (info.view.type === 'dayGridMonth') {
                         return;
                     }
@@ -311,6 +393,26 @@
             });
 
             calendar.render();
+            window.addEventListener('popstate', function(event) {
+                var saved = event.state && event.state[historyKey];
+                if (!window.validCalendarContext(saved)) return;
+                returnContext = window.validCalendarContext(saved.returnContext) ? saved.returnContext : null;
+                if (calendar.view.type !== saved.view || window.buildCalendarLocalDate(calendar.getDate()) !== saved.date) {
+                    calendar.changeView(saved.view, saved.date);
+                }
+                window.requestAnimationFrame(function() {
+                    window.scrollTo(saved.scrollX || 0, saved.scrollY || 0);
+                });
+            });
+            window.enableCalendarMonthSwipe(calendarEl, calendar, {
+                onHorizontalStart: function() {
+                    selectionGuard.suppressForCurrentGesture();
+                    window.clearCalendarSelection(calendar);
+                },
+                onHorizontalEnd: function() {
+                    selectionGuard.releaseAfterCurrentGesture();
+                }
+            });
         });
 
         window.addEventListener('load', function() {

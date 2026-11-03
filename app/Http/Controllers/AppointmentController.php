@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Appointment;
 use App\Models\Service;
+use App\Support\AlphabeticalOrder;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -13,7 +14,7 @@ class AppointmentController extends Controller
 {
     public function index()
     {
-        $services = Auth::user()->services()->orderBy('name')->get();
+        $services = AlphabeticalOrder::byName(Auth::user()->services()->get());
         return view('appointments.index', compact('services'));
     }
 
@@ -66,12 +67,10 @@ class AppointmentController extends Controller
 
     public function create(Request $request)
     {
-        $services = Auth::user()->services()->orderBy('name')->get();
-        $clients = Auth::user()->clients()
+        $services = AlphabeticalOrder::byName(Auth::user()->services()->get());
+        $clients = AlphabeticalOrder::byName(Auth::user()->clients()
             ->with('services')
-            ->orderByDesc('is_permanent')
-            ->orderBy('name')
-            ->get();
+            ->get());
 
         $start = $request->query('start');
         $end = $request->query('end');
@@ -143,12 +142,10 @@ class AppointmentController extends Controller
     public function edit(Appointment $appointment)
     {
         $this->authorize('update', $appointment);
-        $services = Auth::user()->services()->orderBy('name')->get();
-        $clients = Auth::user()->clients()
+        $services = AlphabeticalOrder::byName(Auth::user()->services()->get());
+        $clients = AlphabeticalOrder::byName(Auth::user()->clients()
             ->with('services')
-            ->orderByDesc('is_permanent')
-            ->orderBy('name')
-            ->get();
+            ->get());
 
         return view('appointments.edit', compact('appointment', 'services', 'clients'));
     }

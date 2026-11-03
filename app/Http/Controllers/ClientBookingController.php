@@ -7,6 +7,7 @@ use App\Models\Appointment;
 use App\Models\User;
 use App\Services\AppointmentWriteLock;
 use App\Services\BookingAvailability;
+use App\Support\AlphabeticalOrder;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -27,7 +28,7 @@ class ClientBookingController extends Controller
             abort(403, 'Вы не привязаны к этому мастеру.');
         }
 
-        $services = $master->services()->orderBy('name')->get();
+        $services = AlphabeticalOrder::byName($master->services()->get());
 
         return view('me.book', compact('master', 'card', 'services'));
     }

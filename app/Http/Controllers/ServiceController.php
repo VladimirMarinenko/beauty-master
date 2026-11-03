@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Service;
+use App\Support\AlphabeticalOrder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
@@ -10,7 +11,7 @@ class ServiceController extends Controller
 {
     public function index()
     {
-        $services = Auth::user()->services()->latest()->get();
+        $services = AlphabeticalOrder::byName(Auth::user()->services()->get());
         return view('services.index', compact('services'));
     }
 

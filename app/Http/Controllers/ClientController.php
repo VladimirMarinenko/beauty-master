@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Appointment;
 use App\Models\Client;
 use App\Services\AppointmentWriteLock;
+use App\Support\AlphabeticalOrder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -57,7 +58,7 @@ class ClientController extends Controller
         $isPhone = Client::looksLikePhone($q);
         $phoneDigits = $isPhone ? Client::normalizePhone($q) : null;
 
-        $clients = Auth::user()->clientCards()
+        $clients = AlphabeticalOrder::byName(Auth::user()->clientCards()
             ->with('services')
             ->where(function ($qq) use ($q, $isPhone, $phoneDigits) {
                 $qq->where('name', 'like', "%{$q}%")
@@ -71,10 +72,7 @@ class ClientController extends Controller
                     }
                 }
             })
-            ->orderByDesc('is_permanent')
-            ->orderBy('name')
-            ->limit(20)
-            ->get();
+            ->get())->take(20);
 
         return response()->json($clients->map(function ($c) {
             return [
@@ -91,7 +89,7 @@ class ClientController extends Controller
 
     public function create()
     {
-        $services = Auth::user()->services()->orderBy('name')->get();
+        $services = AlphabeticalOrder::byName(Auth::user()->services()->get());
 
         return view('clients.create', compact('services'));
     }
@@ -134,7 +132,7 @@ class ClientController extends Controller
     {
         $this->authorizeClient($client);
 
-        $services = Auth::user()->services()->orderBy('name')->get();
+        $services = AlphabeticalOrder::byName(Auth::user()->services()->get());
         $selectedServiceIds = $client->services->pluck('id')->toArray();
 
         return view('clients.edit', compact('client', 'services', 'selectedServiceIds'));
@@ -213,7 +211,7 @@ class ClientController extends Controller
 
     private function getFilteredClients(string $search)
     {
-        return Auth::user()->clientCards()
+        return AlphabeticalOrder::byName(Auth::user()->clientCards()
             ->with('services')
             ->when($search !== '', function ($query) use ($search) {
                 $isPhone = Client::looksLikePhone($search);
@@ -232,9 +230,7 @@ class ClientController extends Controller
                     }
                 });
             })
-            ->orderByDesc('is_permanent')
-            ->orderBy('name')
-            ->get();
+            ->get());
     }
 
     /**

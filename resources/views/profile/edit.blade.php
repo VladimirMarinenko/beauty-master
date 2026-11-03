@@ -218,6 +218,8 @@
                 </div>
         @endif
 
+        @include('profile.partials.usage-guide')
+
         <!-- Смена пароля -->
             <div class="card p-5">
                 <h3 class="text-base font-semibold mb-4" style="color: var(--text);">Сменить пароль</h3>
