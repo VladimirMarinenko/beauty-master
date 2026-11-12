@@ -3,7 +3,6 @@
 namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -22,19 +21,10 @@ class RunTestsAndNotify extends Command
             return self::FAILURE;
         }
 
-        // Сбрасываем кэш конфига, чтобы дочерний процесс не прочитал
-        // закэшированные боевые значения (mysql/beauty_master)
-        try {
-            Artisan::call('config:clear');
-        } catch (\Throwable $e) {
-            Log::warning('tests:notify — config:clear failed', ['error' => $e->getMessage()]);
-        }
-
         $this->info('Running tests...');
 
         $cleanEnv = [
             'APP_ENV'          => 'testing',
-            'APP_KEY'          => (string) config('app.key'),
             'DB_CONNECTION'    => 'sqlite',
             'DB_DATABASE'      => ':memory:',
             'SESSION_DRIVER'   => 'array',
