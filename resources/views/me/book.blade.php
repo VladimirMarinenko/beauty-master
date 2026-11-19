@@ -29,18 +29,11 @@
             </div>
         @endif
 
-        <div class="card p-4 mb-4">
-            <p class="text-xs" style="color: var(--muted);">
-                Вы записываетесь к мастеру <strong style="color: var(--text);">{{ $master->name }}</strong>.
-                У мастера вы записаны как <strong style="color: var(--text);">{{ $card->name }}</strong>.
-            </p>
-        </div>
-
         <form method="POST" action="{{ route('me.book.store', ['master' => $master->id]) }}" id="booking-form">
             @csrf
 
             <div class="card p-4 mb-4">
-                <h3 class="text-base font-semibold mb-3" style="color: var(--text);">Услуга</h3>
+                <h3 class="text-base font-semibold mb-3" style="color: var(--text);">Выберите услугу</h3>
 
                 @if($services->isEmpty())
                     <p class="text-sm" style="color: var(--muted);">Мастер пока не добавил услуги.</p>
@@ -134,7 +127,8 @@
 
                 // { 'Y-m-d': {available, reason} } — из /availability
                 let availability = {};
-                // кэш загруженных месяцев: `${serviceId}:${YYYY-MM}` -> true
+                const disabledForService = new Set();
+                // кэш загруженных месяцев: `${version}:${serviceId}:${YYYY-MM}` -> true
                 const availabilityLoaded = {};
                 const loadingMonths = new Set();
                 let availabilityVersion = 0;
@@ -196,8 +190,10 @@
                         }
 
                         // 3. Нет свободных слотов — из availability
-                        const info = availability[formatDateKey(date)];
+                        const key = formatDateKey(date);
+                        const info = availability[key];
                         if (info && info.available === false) {
+                            disabledForService.add(key);
                             return {
                                 disabled: true,
                                 classes: 'day-unavailable',
@@ -274,6 +270,9 @@
                 serviceRadios.forEach(r => r.addEventListener('change', () => {
                     availabilityVersion++;
                     availability = {};
+                    // Air Datepicker запоминает disabled отдельно: update() не снимает блокировку.
+                    dp.enableDate([...disabledForService]);
+                    disabledForService.clear();
                     dp.update({});
                     for (const k in availabilityLoaded) delete availabilityLoaded[k];
                     if (dp.viewDate) {
