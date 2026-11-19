@@ -128,6 +128,7 @@
             padding: 2px 6px 0 6px;
             margin-top: 0;
             align-content: flex-start;
+            align-items: center;
             pointer-events: none;
         }
         .fc-dayGridMonth-view .fc-daygrid-event-harness {
@@ -158,13 +159,21 @@
             border-radius: 50%;
             box-sizing: content-box;
         }
+        .fc-dayGridMonth-view .fc-daygrid-day-bottom {
+            margin-inline: 0;
+        }
+        .fc-dayGridMonth-view .fc-daygrid-day-bottom:empty {
+            display: none;
+        }
         .fc-dayGridMonth-view .fc-daygrid-more-link {
             font-size: 0.7rem;
             font-weight: 700;
             color: #4f46e5;
             text-decoration: none;
-            padding: 0 4px;
+            padding: 0;
+            margin-top: 0;
             line-height: 1;
+            pointer-events: auto;
         }
 
         .fc .fc-timegrid-slot {
@@ -219,16 +228,27 @@
             }
             .fc .fc-daygrid-day-frame {
                 min-height: 52px;
-                padding: 2px;
+                padding: 2px 0;
             }
             .fc .fc-daygrid-day-number {
                 font-size: 0.75rem;
                 padding: 1px 5px;
             }
+            .fc-dayGridMonth-view .fc-daygrid-day-events {
+                gap: 1px;
+                padding-inline: 0;
+            }
+            .fc.fc-direction-ltr .fc-dayGridMonth-view .fc-daygrid-event {
+                margin-inline: 0;
+            }
+            .fc-dayGridMonth-view .fc-daygrid-more-link {
+                font-size: 0.625rem;
+            }
             .fc-dayGridMonth-view .fc-daygrid-event-dot {
                 width: 6px !important;
                 height: 6px !important;
                 border-width: 3px !important;
+                box-sizing: border-box;
             }
             .fc .fc-timegrid-slot { height: 28px; }
         }
@@ -288,7 +308,6 @@
                     window.clearCalendarSelection(calendar);
                 },
                 selectMirror: true,
-                dayMaxEvents: 12,
                 nowIndicator: true,
 
                 headerToolbar: {
@@ -302,6 +321,11 @@
                     listWeek: 'Список'
                 },
                 views: {
+                    dayGridMonth: {
+                        dayMaxEvents: 3,
+                        moreLinkContent: function(info) { return '+' + info.num; },
+                        moreLinkHint: function(count) { return 'Скрытых записей: ' + count; }
+                    },
                     listWeek: {
                         listDayFormat: { weekday: 'long', day: 'numeric', month: 'numeric' },
                         listDaySideFormat: { hour: '2-digit', minute: '2-digit' }
